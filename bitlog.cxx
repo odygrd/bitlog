@@ -1,6 +1,9 @@
 // Global module fragment where #includes can happen
 module;
 
+#include <iostream>
+
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <cstdint>
@@ -8,7 +11,9 @@ module;
 #include <expected>
 #include <filesystem>
 #include <limits>
+#include <span>
 #include <system_error>
+#include <variant>
 #include <vector>
 
 #include <fcntl.h>
@@ -236,10 +241,10 @@ public:
    * @return An std::error_code indicating the success or failure of the initialization.
    */
   [[nodiscard]] std::error_code create(integer_type capacity, std::filesystem::path const& shm_sub_dir,
-                                            std::string unique_id = std::string{},
-                                            MemoryPageSize page_size = MemoryPageSize::RegularPage,
-                                            std::filesystem::path const& shm_root_dir = std::filesystem::path{},
-                                            integer_type reader_store_percentage = 5) noexcept
+                                       std::string unique_id = std::string{},
+                                       MemoryPageSize page_size = MemoryPageSize::RegularPage,
+                                       std::filesystem::path const& shm_root_dir = std::filesystem::path{},
+                                       integer_type reader_store_percentage = 5) noexcept
   {
     std::error_code ec{};
 
@@ -401,8 +406,8 @@ public:
    * @return An std::error_code indicating the success or failure of the initialization.
    */
   [[nodiscard]] std::error_code open(std::string const& unique_id, std::filesystem::path const& shm_sub_dir,
-                                            MemoryPageSize page_size = MemoryPageSize::RegularPage,
-                                            std::filesystem::path const& shm_root_dir = std::filesystem::path{}) noexcept
+                                     MemoryPageSize page_size = MemoryPageSize::RegularPage,
+                                     std::filesystem::path const& shm_root_dir = std::filesystem::path{}) noexcept
   {
     std::error_code ec{};
 
@@ -527,12 +532,13 @@ public:
     return ec;
   }
 
-  [[nodiscard]] static std::expected<bool, std::error_code> is_created(std::string const& unique_id, std::filesystem::path const& shm_sub_dir,
-                                                  std::filesystem::path const& shm_root_dir = std::filesystem::path{})
+  [[nodiscard]] static std::expected<bool, std::error_code> is_created(
+    std::string const& unique_id, std::filesystem::path const& shm_sub_dir,
+    std::filesystem::path const& shm_root_dir = std::filesystem::path{})
   {
     std::expected<bool, std::error_code> created;
 
-      // First resolve shm directories
+    // First resolve shm directories
     std::expected<std::filesystem::path, std::error_code> const shm_path =
       _resolve_shm_path(shm_root_dir, shm_sub_dir);
 
@@ -558,16 +564,16 @@ public:
   }
 
   /**
- * @brief Removes shared memory files associated with a unique identifier.
- *
- * This function removes shared memory files (storage, metadata, ready, lock)
- * associated with a specified unique identifier.
- *
- * @param unique_id The unique identifier used to identify the shared memory files.
- * @param shm_sub_dir The sub-directory within shared memory.
- * @param shm_root_dir The root directory for shared memory (default is an empty path, resolving to /dev/shm or /tmp).
- *
- * @return An std::error_code indicating the success or failure
+   * @brief Removes shared memory files associated with a unique identifier.
+   *
+   * This function removes shared memory files (storage, metadata, ready, lock)
+   * associated with a specified unique identifier.
+   *
+   * @param unique_id The unique identifier used to identify the shared memory files.
+   * @param shm_sub_dir The sub-directory within shared memory.
+   * @param shm_root_dir The root directory for shared memory (default is an empty path, resolving to /dev/shm or /tmp).
+   *
+   * @return An std::error_code indicating the success or failure
    */
   [[nodiscard]] static std::error_code remove_shm_files(
     std::string const& unique_id, std::filesystem::path const& shm_sub_dir,
@@ -935,4 +941,202 @@ private:
 
 using BoundedQueue = BoundedQueueImpl<uint64_t, false>;
 using BoundedQueueX86 = BoundedQueueImpl<uint64_t, true>;
+
+/**
+ * Literal class type that wraps a constant expression string.
+ */
+template <size_t N>
+struct StringLiteral
+{
+  constexpr StringLiteral(char const (&str)[N]) { std::copy_n(str, N, value); }
+
+  char value[N];
+};
+
+/**
+ * Enum defining different type descriptors
+ */
+enum class TypeDescriptorName : uint8_t
+{
+  None = 0,
+  SignedChar,
+  UnsignedChar,
+  ShortInt,
+  UnsignedShortInt,
+  Int,
+  UnsignedInt,
+  LongInt,
+  UnsignedLongInt,
+  LongLongInt,
+  UnsignedLongLongInt,
+  Float,
+  Double
+};
+
+/**
+ * Primary template for unsupported types
+ */
+template <typename T>
+struct GetTypeDescriptor
+{
+  static_assert(false, "Unsupported type");
+};
+
+template <>
+struct GetTypeDescriptor<char>
+{
+  static constexpr TypeDescriptorName value{TypeDescriptorName::SignedChar};
+};
+
+template <>
+struct GetTypeDescriptor<unsigned char>
+{
+  static constexpr TypeDescriptorName value{TypeDescriptorName::UnsignedChar};
+};
+
+template <>
+struct GetTypeDescriptor<short int>
+{
+  static constexpr TypeDescriptorName value{TypeDescriptorName::ShortInt};
+};
+
+template <>
+struct GetTypeDescriptor<unsigned short int>
+{
+  static constexpr TypeDescriptorName value{TypeDescriptorName::UnsignedShortInt};
+};
+
+template <>
+struct GetTypeDescriptor<int>
+{
+  static constexpr TypeDescriptorName value{TypeDescriptorName::Int};
+};
+
+template <>
+struct GetTypeDescriptor<unsigned int>
+{
+  static constexpr TypeDescriptorName value{TypeDescriptorName::UnsignedInt};
+};
+
+template <>
+struct GetTypeDescriptor<long int>
+{
+  static constexpr TypeDescriptorName value{TypeDescriptorName::LongInt};
+};
+
+template <>
+struct GetTypeDescriptor<unsigned long int>
+{
+  static constexpr TypeDescriptorName value{TypeDescriptorName::UnsignedLongInt};
+};
+
+template <>
+struct GetTypeDescriptor<long long int>
+{
+  static constexpr TypeDescriptorName value{TypeDescriptorName::LongLongInt};
+};
+
+template <>
+struct GetTypeDescriptor<unsigned long long int>
+{
+  static constexpr TypeDescriptorName value{TypeDescriptorName::UnsignedLongLongInt};
+};
+
+template <>
+struct GetTypeDescriptor<float>
+{
+  static constexpr TypeDescriptorName value{TypeDescriptorName::Float};
+};
+
+template <>
+struct GetTypeDescriptor<double>
+{
+  static constexpr TypeDescriptorName value{TypeDescriptorName::Double};
+};
+
+/**
+ * Stores macro metadata
+ */
+struct MacroMetadata
+{
+  constexpr MacroMetadata(std::string_view file, std::string_view function, std::string_view format,
+                          uint32_t line, std::span<const TypeDescriptorName> type_descriptors)
+    : file(file), function(function), format(format), line(line), type_descriptors(type_descriptors)
+  {
+  }
+
+  std::string_view file{};
+  std::string_view function{};
+  std::string_view format{};
+  uint32_t line{};
+  std::span<const TypeDescriptorName> type_descriptors{};
+};
+
+/**
+ * @brief Function to retrieve a pointer to macro metadata.
+ * @return Pointer to the macro metadata.
+ */
+template <StringLiteral File, StringLiteral Function, uint32_t Line, StringLiteral Format, typename... Args>
+[[nodiscard]] MacroMetadata const* get_macro_metadata_ptr() noexcept
+{
+  static constexpr std::array<TypeDescriptorName, sizeof...(Args)> type_descriptors{
+    GetTypeDescriptor<Args>::value...};
+
+  static constexpr MacroMetadata macro_metadata{File.value, Function.value, Format.value, Line,
+                                                std::span<const TypeDescriptorName>{type_descriptors}};
+
+  return &macro_metadata;
+}
+
+// Forward declaration
+struct MacroMetadataNode;
+
+/**
+ * @brief Function returning a reference to the head of the macro metadata nodes.
+ * @return Reference to the head of macro metadata nodes.
+ */
+[[nodiscard]] MacroMetadataNode*& macro_metadata_head() noexcept
+{
+  static MacroMetadataNode* head{nullptr};
+  return head;
+}
+
+/**
+ * Node to store macro metadata
+ */
+struct MacroMetadataNode
+{
+  explicit MacroMetadataNode(MacroMetadata const* macro_metadata)
+    : id(_gen_unique_id()), macro_metadata(macro_metadata), next(std::exchange(macro_metadata_head(), this))
+  {
+  }
+
+  uint32_t id;
+  MacroMetadata const* macro_metadata;
+  MacroMetadataNode* next;
+
+private:
+  [[nodiscard]] static uint32_t _gen_unique_id() noexcept
+  {
+    static uint32_t unique_id{0};
+    ++unique_id;
+    return unique_id;
+  }
+};
+
+/**
+ * @brief Template instance for macro metadata node initialization.
+ */
+template <StringLiteral File, StringLiteral Function, uint32_t Line, StringLiteral Format, typename... Args>
+MacroMetadataNode marco_metadata_node{get_macro_metadata_ptr<File, Function, Line, Format, Args...>()};
+
+template <StringLiteral File, StringLiteral Function, uint32_t Line, StringLiteral Format, typename... Args>
+void log(Args const&... args)
+{
+  MacroMetadataNode mt = marco_metadata_node<File, Function, Line, Format, Args...>;
+  std::cout << "id " << mt.id << " line " << mt.macro_metadata->line << " td "
+            << static_cast<uint32_t>(mt.macro_metadata->type_descriptors.front()) << std::endl;
+
+  // TODO:: We can start serializing here now, metadata_id, timestamp, args
+}
 } // namespace bitlog
