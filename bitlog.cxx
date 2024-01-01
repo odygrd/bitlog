@@ -13,6 +13,7 @@ module;
 #include <limits>
 #include <memory>
 #include <span>
+#include <string>
 #include <system_error>
 #include <variant>
 #include <vector>
@@ -1076,15 +1077,15 @@ enum class LogLevel : uint8_t
 struct MacroMetadata
 {
   constexpr MacroMetadata(std::string_view file, std::string_view function, uint32_t line, LogLevel level,
-                          std::string_view format, std::span<TypeDescriptorName const> type_descriptors)
-    : type_descriptors(type_descriptors), file(file), function(function), format(format), line(line), level(level)
+                          std::string_view log_format, std::span<TypeDescriptorName const> type_descriptors)
+    : type_descriptors(type_descriptors), file(file), function(function), log_format(log_format), line(line), level(level)
   {
   }
 
   std::span<TypeDescriptorName const> type_descriptors;
   std::string_view file;
   std::string_view function;
-  std::string_view format;
+  std::string_view log_format;
   uint32_t line;
   LogLevel level;
 };
@@ -1093,15 +1094,15 @@ struct MacroMetadata
  * @brief Function to retrieve a reference to macro metadata.
  * @return Reference to the macro metadata.
  */
-template <StringLiteral File, StringLiteral Function, uint32_t Line, LogLevel Level, StringLiteral Format, typename... Args>
+template <StringLiteral File, StringLiteral Function, uint32_t Line, LogLevel Level, StringLiteral LogFormat, typename... Args>
 [[nodiscard]] MacroMetadata const& get_macro_metadata() noexcept
 {
   static constexpr std::array<TypeDescriptorName, sizeof...(Args)> type_descriptors{
     GetTypeDescriptor<Args>::value...};
 
   static constexpr MacroMetadata macro_metadata{
-    File.value, Function.value, Line,
-    Level,      Format.value,   std::span<TypeDescriptorName const>{type_descriptors}};
+    File.value, Function.value,  Line,
+    Level,      LogFormat.value, std::span<TypeDescriptorName const>{type_descriptors}};
 
   return macro_metadata;
 }
@@ -1145,19 +1146,20 @@ private:
 /**
  * @brief Template instance for macro metadata node initialization.
  */
-template <StringLiteral File, StringLiteral Function, uint32_t Line, LogLevel Level, StringLiteral Format, typename... Args>
-MacroMetadataNode marco_metadata_node{get_macro_metadata<File, Function, Line, Level, Format, Args...>()};
+template <StringLiteral File, StringLiteral Function, uint32_t Line, LogLevel Level, StringLiteral LogFormat, typename... Args>
+MacroMetadataNode marco_metadata_node{get_macro_metadata<File, Function, Line, Level, LogFormat, Args...>()};
 
 template <typename TQueue>
 class ThreadContext
 {
 public:
+  using queue_t = TQueue;
+
   ThreadContext(ThreadContext const&) = delete;
   ThreadContext& operator=(ThreadContext const&) = delete;
 
   ThreadContext()
   {
-    std::cout << "Constructing " << std::endl;
     // TODO:: capacity and application_instance_id, also need to mkdir application_instance_id
     // TODO:: std::error_code res = _queue.create(4096, "application_instance_id");
     std::error_code res = _queue.create(4096, std::filesystem::path{});
@@ -1168,10 +1170,10 @@ public:
     }
   }
 
-  [[nodiscard]] TQueue& get_queue() noexcept { return _queue; }
+  [[nodiscard]] queue_t& get_queue() noexcept { return _queue; }
 
 private:
-  TQueue _queue;
+  queue_t _queue;
 };
 
 /**
@@ -1185,20 +1187,70 @@ private:
 template <typename TQueue>
 ThreadContext<TQueue>& get_thread_context() noexcept
 {
-  thread_local ThreadContext<BoundedQueue> thread_context;
+  thread_local ThreadContext<TQueue> thread_context;
   return thread_context;
 }
 
-template <StringLiteral File, StringLiteral Function, uint32_t Line, LogLevel Level, StringLiteral Format, typename... Args>
-void log(Args const&... args)
+[[nodiscard]] std::error_code init() noexcept
 {
-  MacroMetadataNode mt = marco_metadata_node<File, Function, Line, Level, Format, Args...>;
-  std::cout << "id " << mt.id << " line " << mt.macro_metadata.line << " td "
-            << static_cast<uint32_t>(mt.macro_metadata.type_descriptors.front()) << std::endl;
+  // TODO:: Initialise the config and write the metadata file to shm
+  // TODO:: std::call_once
 
-  // TODO:: BoundedQueue and BoundedQueueX86 ..
-  auto& thread_context = get_thread_context<BoundedQueue>();
-  thread_context.get_queue().prepare_write(321u);
-  // TODO:: We can start serializing here now, metadata_id, timestamp, args
+  return std::error_code{};
 }
+
+class LoggerBase
+{
+public:
+  LoggerBase(std::string name, LogLevel log_level = LogLevel::Info)
+    : _name(std::move(name)), _log_level(log_level){};
+
+  /**
+   * @return The log level of the logger
+   */
+  [[nodiscard]] LogLevel log_level() const noexcept
+  {
+    return _log_level.load(std::memory_order_relaxed);
+  }
+
+  /**
+   * Set the log level of the logger
+   * @param log_level The new log level
+   */
+  void set_log_level(LogLevel level) { _log_level.store(level, std::memory_order_relaxed); }
+
+  /**
+   * Checks if the given log_statement_level can be logged by this logger
+   * @param log_statement_level The log level of the log statement to be logged
+   * @return bool if a message can be logged based on the current log level
+   */
+  [[nodiscard]] bool should_log(LogLevel log_statement_level) const noexcept
+  {
+    return log_statement_level >= log_level();
+  }
+
+private:
+  std::string _name;
+  std::atomic<LogLevel> _log_level;
+};
+
+template <typename TQueue>
+class Logger : public LoggerBase
+{
+public:
+  using LoggerBase::LoggerBase;
+  using queue_t = TQueue;
+
+  template <StringLiteral File, StringLiteral Function, uint32_t Line, LogLevel Level, StringLiteral LogFormat, typename... Args>
+  void log(Args const&... args)
+  {
+    MacroMetadataNode mt = marco_metadata_node<File, Function, Line, Level, LogFormat, Args...>;
+    std::cout << "writing runtime args to queue for metadata_id " << mt.id << std::endl;
+
+    // TODO:: BoundedQueue and BoundedQueueX86 ..
+    auto& thread_context = get_thread_context<queue_t>();
+    // thread_context.get_queue().prepare_write(321u);
+    //  TODO:: We can start serializing here now, metadata_id, timestamp, args
+  }
+};
 } // namespace bitlog
