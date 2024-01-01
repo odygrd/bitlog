@@ -11,6 +11,7 @@ module;
 #include <expected>
 #include <filesystem>
 #include <limits>
+#include <memory>
 #include <span>
 #include <system_error>
 #include <variant>
@@ -949,7 +950,6 @@ template <size_t N>
 struct StringLiteral
 {
   constexpr StringLiteral(char const (&str)[N]) { std::copy_n(str, N, value); }
-
   char value[N];
 };
 
@@ -1055,37 +1055,55 @@ struct GetTypeDescriptor<double>
 };
 
 /**
+ * Represents log levels
+ */
+enum class LogLevel : uint8_t
+{
+  TraceL3,
+  TraceL2,
+  TraceL1,
+  Debug,
+  Info,
+  Warning,
+  Error,
+  Critical,
+  None,
+};
+
+/**
  * Stores macro metadata
  */
 struct MacroMetadata
 {
-  constexpr MacroMetadata(std::string_view file, std::string_view function, std::string_view format,
-                          uint32_t line, std::span<const TypeDescriptorName> type_descriptors)
-    : file(file), function(function), format(format), line(line), type_descriptors(type_descriptors)
+  constexpr MacroMetadata(std::string_view file, std::string_view function, uint32_t line, LogLevel level,
+                          std::string_view format, std::span<TypeDescriptorName const> type_descriptors)
+    : type_descriptors(type_descriptors), file(file), function(function), format(format), line(line), level(level)
   {
   }
 
-  std::string_view file{};
-  std::string_view function{};
-  std::string_view format{};
-  uint32_t line{};
-  std::span<const TypeDescriptorName> type_descriptors{};
+  std::span<TypeDescriptorName const> type_descriptors;
+  std::string_view file;
+  std::string_view function;
+  std::string_view format;
+  uint32_t line;
+  LogLevel level;
 };
 
 /**
- * @brief Function to retrieve a pointer to macro metadata.
- * @return Pointer to the macro metadata.
+ * @brief Function to retrieve a reference to macro metadata.
+ * @return Reference to the macro metadata.
  */
-template <StringLiteral File, StringLiteral Function, uint32_t Line, StringLiteral Format, typename... Args>
-[[nodiscard]] MacroMetadata const* get_macro_metadata_ptr() noexcept
+template <StringLiteral File, StringLiteral Function, uint32_t Line, LogLevel Level, StringLiteral Format, typename... Args>
+[[nodiscard]] MacroMetadata const& get_macro_metadata() noexcept
 {
   static constexpr std::array<TypeDescriptorName, sizeof...(Args)> type_descriptors{
     GetTypeDescriptor<Args>::value...};
 
-  static constexpr MacroMetadata macro_metadata{File.value, Function.value, Format.value, Line,
-                                                std::span<const TypeDescriptorName>{type_descriptors}};
+  static constexpr MacroMetadata macro_metadata{
+    File.value, Function.value, Line,
+    Level,      Format.value,   std::span<TypeDescriptorName const>{type_descriptors}};
 
-  return &macro_metadata;
+  return macro_metadata;
 }
 
 // Forward declaration
@@ -1106,14 +1124,14 @@ struct MacroMetadataNode;
  */
 struct MacroMetadataNode
 {
-  explicit MacroMetadataNode(MacroMetadata const* macro_metadata)
+  explicit MacroMetadataNode(MacroMetadata const& macro_metadata)
     : id(_gen_unique_id()), macro_metadata(macro_metadata), next(std::exchange(macro_metadata_head(), this))
   {
   }
 
-  uint32_t id;
-  MacroMetadata const* macro_metadata;
-  MacroMetadataNode* next;
+  uint32_t const id;
+  MacroMetadata const& macro_metadata;
+  MacroMetadataNode const* next;
 
 private:
   [[nodiscard]] static uint32_t _gen_unique_id() noexcept
@@ -1127,16 +1145,60 @@ private:
 /**
  * @brief Template instance for macro metadata node initialization.
  */
-template <StringLiteral File, StringLiteral Function, uint32_t Line, StringLiteral Format, typename... Args>
-MacroMetadataNode marco_metadata_node{get_macro_metadata_ptr<File, Function, Line, Format, Args...>()};
+template <StringLiteral File, StringLiteral Function, uint32_t Line, LogLevel Level, StringLiteral Format, typename... Args>
+MacroMetadataNode marco_metadata_node{get_macro_metadata<File, Function, Line, Level, Format, Args...>()};
 
-template <StringLiteral File, StringLiteral Function, uint32_t Line, StringLiteral Format, typename... Args>
+template <typename TQueue>
+class ThreadContext
+{
+public:
+  ThreadContext(ThreadContext const&) = delete;
+  ThreadContext& operator=(ThreadContext const&) = delete;
+
+  ThreadContext()
+  {
+    std::cout << "Constructing " << std::endl;
+    // TODO:: capacity and application_instance_id, also need to mkdir application_instance_id
+    // TODO:: std::error_code res = _queue.create(4096, "application_instance_id");
+    std::error_code res = _queue.create(4096, std::filesystem::path{});
+
+    if (res)
+    {
+      // TODO:: Error handling ?
+    }
+  }
+
+  [[nodiscard]] TQueue& get_queue() noexcept { return _queue; }
+
+private:
+  TQueue _queue;
+};
+
+/**
+ * This function retrieves the thread-specific context.
+ *
+ * The purpose is to ensure that only one instance of ThreadContext is created
+ * per thread. Without this approach, using thread_local within a templated
+ * function, e.g., log<>, could lead to multiple ThreadContext instances being
+ * created for the same thread.
+ */
+template <typename TQueue>
+ThreadContext<TQueue>& get_thread_context() noexcept
+{
+  thread_local ThreadContext<BoundedQueue> thread_context;
+  return thread_context;
+}
+
+template <StringLiteral File, StringLiteral Function, uint32_t Line, LogLevel Level, StringLiteral Format, typename... Args>
 void log(Args const&... args)
 {
-  MacroMetadataNode mt = marco_metadata_node<File, Function, Line, Format, Args...>;
-  std::cout << "id " << mt.id << " line " << mt.macro_metadata->line << " td "
-            << static_cast<uint32_t>(mt.macro_metadata->type_descriptors.front()) << std::endl;
+  MacroMetadataNode mt = marco_metadata_node<File, Function, Line, Level, Format, Args...>;
+  std::cout << "id " << mt.id << " line " << mt.macro_metadata.line << " td "
+            << static_cast<uint32_t>(mt.macro_metadata.type_descriptors.front()) << std::endl;
 
+  // TODO:: BoundedQueue and BoundedQueueX86 ..
+  auto& thread_context = get_thread_context<BoundedQueue>();
+  thread_context.get_queue().prepare_write(321u);
   // TODO:: We can start serializing here now, metadata_id, timestamp, args
 }
 } // namespace bitlog
