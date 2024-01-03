@@ -5,6 +5,7 @@ module;
 
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -15,6 +16,7 @@ module;
 #include <span>
 #include <string>
 #include <system_error>
+#include <type_traits>
 #include <variant>
 #include <vector>
 
@@ -655,7 +657,7 @@ public:
    * @param n The size requested for writing.
    * @return A pointer to the location in memory for writing, or nullptr if insufficient space is available.
    */
-  ALWAYS_INLINE [[nodiscard]] std::byte* prepare_write(integer_type n) noexcept
+  ALWAYS_INLINE [[nodiscard]] uint8_t* prepare_write(integer_type n) noexcept
   {
     if ((_metadata->capacity - static_cast<integer_type>(_metadata->writer_pos - _metadata->reader_pos_cache)) < n)
     {
@@ -713,7 +715,7 @@ public:
    *
    * @return A pointer to the location in memory for reading, or nullptr if no data is available.
    */
-  ALWAYS_INLINE [[nodiscard]] std::byte* prepare_read() noexcept
+  ALWAYS_INLINE [[nodiscard]] uint8_t* prepare_read() noexcept
   {
     if (_metadata->writer_pos_cache == _metadata->reader_pos)
     {
@@ -852,7 +854,7 @@ private:
   {
     // ask mmap for a good address where we can put both virtual copies of the buffer
     auto storage_address =
-      static_cast<std::byte*>(::mmap(nullptr, 2 * size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
+      static_cast<uint8_t*>(::mmap(nullptr, 2 * size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
 
     if (storage_address == MAP_FAILED)
     {
@@ -935,7 +937,7 @@ private:
   static constexpr integer_type CACHELINE_MASK{CACHE_LINE_SIZE_BYTES - 1};
 
   Metadata* _metadata{nullptr};
-  std::byte* _storage{nullptr};
+  uint8_t* _storage{nullptr};
 
   // local variables - not stored in shm
   int _filelock_fd{-1};
@@ -1203,139 +1205,136 @@ ThreadContext<TQueue>& get_thread_context() noexcept
  * @brief Checks if the provided type is a C-style string (char const*, char*, or const char[]).
  * @return True if the type is a C-style string, false otherwise.
  */
-template<typename T>
+template <typename T>
 [[nodiscard]] constexpr bool is_c_style_string_type() noexcept
 {
-    using arg_type = std::decay_t<T>;
-    return std::disjunction_v<std::is_same<arg_type, char const*>, std::is_same<arg_type, char*>>;
+  using arg_type = std::decay_t<T>;
+  return std::disjunction_v<std::is_same<arg_type, char const*>, std::is_same<arg_type, char*>>;
 }
 
 /**
  * @brief Checks if the provided type is a std::string or std::string_view type.
  * @return True if the type is a std::string or std::string_view type, false otherwise.
  */
-template<typename T>
+template <typename T>
 [[nodiscard]] constexpr bool is_std_string_type() noexcept
 {
-    using arg_type = std::decay_t<T>;
-    return std::disjunction_v<std::is_same<arg_type, std::string>, std::is_same<arg_type, std::string_view>>;
+  using arg_type = std::decay_t<T>;
+  return std::disjunction_v<std::is_same<arg_type, std::string>, std::is_same<arg_type, std::string_view>>;
 }
 
 /**
  * @brief Checks if the provided type is a char array (char[]).
  * @return True if the type is a char array, false otherwise.
  */
-template<typename T>
+template <typename T>
 [[nodiscard]] constexpr bool is_char_array_type() noexcept
 {
-    using arg_type = std::remove_cvref_t<T>;
-    return std::conjunction_v<std::is_array<arg_type>, std::is_same<std::remove_cvref_t<std::remove_extent_t<T>>, char>>;
+  using arg_type = std::remove_cvref_t<T>;
+  return std::conjunction_v<std::is_array<arg_type>, std::is_same<std::remove_cvref_t<std::remove_extent_t<T>>, char>>;
 }
 
 /**
  * @brief Counts the number of C-style string arguments among the provided arguments.
  * @return The count of C-style string arguments.
  */
-template<typename... Args>
+template <typename... Args>
 [[nodiscard]] constexpr uint32_t count_c_style_strings() noexcept
 {
-    return (0u + ... + is_c_style_string_type<Args>());
+  return (0u + ... + is_c_style_string_type<Args>());
 }
 
-
 /**
- * @brief Calculates the total size required to encode the provided arguments and populates the lengths array.
+ * @brief Calculates the total size required to encode the provided arguments and populates the c_style_string_lengths array.
  * @tparam Args Variadic template for the function arguments.
- * @param lengths Array to store the lengths of C-style strings and char arrays.
+ * @param c_style_string_lengths Array to store the c_style_string_lengths of C-style strings and char arrays.
  * @param args The arguments to be encoded.
  * @return The total size required to encode the arguments.
  */
 template <typename... Args>
-constexpr uint32_t calculate_args_size_and_populate_lengths(uint32_t* lengths, Args const&... args) noexcept
+constexpr uint32_t calculate_args_size_and_populate_string_lengths(uint32_t* c_style_string_lengths,
+                                                                   Args const&... args) noexcept
 {
-    uint32_t lengths_index {0};
-    auto get_arg_size = []<typename T>(uint32_t* lengths, uint32_t& lengths_index, T const& arg)
+  uint32_t c_style_string_lengths_index{0};
+  auto get_arg_size = []<typename T>(uint32_t* c_style_string_lengths,
+                                     uint32_t& c_style_string_lengths_index, T const& arg)
+  {
+    if constexpr (is_char_array_type<T>())
     {
-        if constexpr (is_char_array_type<T>())
-        {
-            lengths[lengths_index] = strnlen(arg, std::extent_v<T>);
-            return lengths[lengths_index++];
-        }
-        else if constexpr (is_c_style_string_type<T>())
-        {
-            // include one extra for the zero termination
-            lengths[lengths_index] = strlen(arg) + 1u;
-            return lengths[lengths_index++];
-        }
-        else if constexpr (is_std_string_type<T>())
-        {
-            return static_cast<uint32_t>(sizeof(uint32_t) + arg.length());
-        }
-        else
-        {
-            return static_cast<uint32_t>(sizeof(arg));
-        }
-    };
+      c_style_string_lengths[c_style_string_lengths_index] = strnlen(arg, std::extent_v<T>);
+      return c_style_string_lengths[c_style_string_lengths_index++];
+    }
+    else if constexpr (is_c_style_string_type<T>())
+    {
+      // include one extra for the zero termination
+      c_style_string_lengths[c_style_string_lengths_index] = strlen(arg) + 1u;
+      return c_style_string_lengths[c_style_string_lengths_index++];
+    }
+    else if constexpr (is_std_string_type<T>())
+    {
+      return static_cast<uint32_t>(sizeof(uint32_t) + arg.length());
+    }
+    else
+    {
+      return static_cast<uint32_t>(sizeof(arg));
+    }
+  };
 
-    return (0u + ... + get_arg_size(lengths, lengths_index, args));
+  return (0u + ... + get_arg_size(c_style_string_lengths, c_style_string_lengths_index, args));
 }
 
 /**
  * @brief Encodes an argument into a buffer.
  * @param buffer Pointer to the buffer for encoding.
- * @param lengths Array storing the lengths of C-style strings and char arrays.
- * @param lengths_index Index of the current string/array length in lengths.
+ * @param c_style_string_lengths Array storing the c_style_string_lengths of C-style strings and char arrays.
+ * @param c_style_string_lengths_index Index of the current string/array length in c_style_string_lengths.
  * @param arg The argument to be encoded.
  */
-template<typename T>
-void encode_arg(uint8_t*& buffer, uint32_t const* lengths, uint32_t& lengths_index, T const& arg) noexcept
+template <typename T>
+void encode_arg(uint8_t*& buffer, uint32_t const* c_style_string_lengths,
+                uint32_t& c_style_string_lengths_index, T const& arg) noexcept
 {
-    if constexpr (is_char_array_type<T>())
-    {
-        // To support non zero terminated arrays, copy the length first and then the actual string
-        uint32_t const len = lengths[lengths_index++];
-        std::memcpy(buffer, &len, sizeof(uint32_t));
-        std::memcpy(buffer + sizeof(uint32_t), arg, len);
-        buffer += sizeof(uint32_t) + len;
-    }
-    else if constexpr (is_c_style_string_type<T>())
-    {
-        uint32_t const len = lengths[lengths_index++];
-        std::memcpy(buffer, arg, len);
-        buffer += len;
-    }
-    else if constexpr (is_std_string_type<T>())
-    {
-        // Copy the length first and then the actual string
-        uint32_t const len = static_cast<uint32_t>(arg.length());
-        std::memcpy(buffer, &len, sizeof(uint32_t));
-        std::memcpy(buffer + sizeof(uint32_t), arg.data(), len);
-        buffer += sizeof(uint32_t) + len;
-    }
-    else
-    {
-        std::memcpy(buffer, &arg, sizeof(arg)); 
-        buffer += sizeof(arg); 
-    }
+  if constexpr (is_char_array_type<T>())
+  {
+    // To support non-zero terminated arrays, copy the length first and then the actual string
+    uint32_t const len = c_style_string_lengths[c_style_string_lengths_index++];
+    std::memcpy(buffer, &len, sizeof(uint32_t));
+    std::memcpy(buffer + sizeof(uint32_t), arg, len);
+    buffer += sizeof(uint32_t) + len;
+  }
+  else if constexpr (is_c_style_string_type<T>())
+  {
+    uint32_t const len = c_style_string_lengths[c_style_string_lengths_index++];
+    std::memcpy(buffer, arg, len);
+    buffer += len;
+  }
+  else if constexpr (is_std_string_type<T>())
+  {
+    // Copy the length first and then the actual string
+    auto const len = static_cast<uint32_t>(arg.length());
+    std::memcpy(buffer, &len, sizeof(uint32_t));
+    std::memcpy(buffer + sizeof(uint32_t), arg.data(), len);
+    buffer += sizeof(uint32_t) + len;
+  }
+  else
+  {
+    std::memcpy(buffer, &arg, sizeof(arg));
+    buffer += sizeof(arg);
+  }
 }
 
 /**
  * @brief Encodes multiple arguments into a buffer.
  * @param buffer Pointer to the buffer for encoding.
- * @param lengths Array storing the lengths of C-style strings and char arrays.
+ * @param c_style_string_lengths Array storing the c_style_string_lengths of C-style strings and char arrays.
  * @param args The arguments to be encoded.
  */
-template<typename... Args>
-void encode(uint8_t*& buffer, uint32_t const* lengths, Args const& ...args) noexcept
+template <typename... Args>
+void encode(uint8_t*& buffer, uint32_t const* c_style_string_lengths, Args const&... args) noexcept
 {
-    uint32_t lengths_index{0};
-    (encode_arg(buffer, lengths, lengths_index, args), ...);
+  uint32_t c_style_string_lengths_index{0};
+  (encode_arg(buffer, c_style_string_lengths, c_style_string_lengths_index, args), ...);
 }
-
-// TODO:: Ody use
-// uint32_t lengths[(std::max)(count_c_style_strings<Args...>(), (uint32_t)1)];
-// uint32_t const required_size = calculate_args_size_and_populate_lengths(lengths, args...);
-// encode(buffer_ptr, lengths, args...);
 
 class LoggerBase
 {
@@ -1382,13 +1381,34 @@ public:
   template <StringLiteral File, StringLiteral Function, uint32_t Line, LogLevel Level, StringLiteral LogFormat, typename... Args>
   void log(Args const&... args)
   {
-    MacroMetadataNode mt = marco_metadata_node<File, Function, Line, Level, LogFormat, Args...>;
-    std::cout << "writing runtime args to queue for metadata_id " << mt.id << std::endl;
+    uint32_t c_style_string_lengths[(std::max)(count_c_style_strings<Args...>(), static_cast<uint32_t>(1))];
 
-    // TODO:: BoundedQueue and BoundedQueueX86 ..
+    // Also reserve space for the timestamp and the metadata id
+    uint32_t const args_size = static_cast<uint32_t>(sizeof(uint64_t) + sizeof(uint32_t)) +
+      calculate_args_size_and_populate_string_lengths(c_style_string_lengths, args...);
+
     auto& thread_context = get_thread_context<queue_t>();
-    // thread_context.get_queue().prepare_write(321u);
-    //  TODO:: We can start serializing here now, metadata_id, timestamp, args
+    uint8_t* write_buffer = thread_context.get_queue().prepare_write(args_size);
+
+    if (write_buffer)
+    {
+      uint64_t const now = std::chrono::system_clock::now().time_since_epoch().count();
+      std::memcpy(write_buffer, &now, sizeof(uint64_t));
+      write_buffer += sizeof(uint64_t);
+
+      std::memcpy(write_buffer,
+                  &marco_metadata_node<File, Function, Line, Level, LogFormat, Args...>.id, sizeof(uint32_t));
+      write_buffer += sizeof(uint32_t);
+
+      encode(write_buffer, c_style_string_lengths, args...);
+
+      thread_context.get_queue().finish_write(args_size);
+      thread_context.get_queue().commit();
+    }
+    else
+    {
+      // Queue is full TODO
+    }
   }
 };
 } // namespace bitlog
