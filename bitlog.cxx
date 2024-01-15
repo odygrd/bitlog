@@ -3,6 +3,7 @@ module;
 
 #include <iostream>
 
+#include <any>
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -13,6 +14,7 @@ module;
 #include <filesystem>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <span>
 #include <string>
 #include <system_error>
@@ -41,13 +43,7 @@ module;
 // first thing after the Global module fragment must be a module command
 export module bitlog;
 
-namespace bitlog
-{
-// Constants
-static constexpr size_t CACHE_LINE_SIZE_BYTES{64u};
-static constexpr size_t CACHE_LINE_ALIGNED{2 * CACHE_LINE_SIZE_BYTES};
-
-// Attributes
+// Attributes and Macros
 #ifdef NDEBUG // Check if not in debug mode
   #if defined(__GNUC__) || defined(__clang__)
     #define ALWAYS_INLINE [[gnu::always_inline]]
@@ -59,6 +55,532 @@ static constexpr size_t CACHE_LINE_ALIGNED{2 * CACHE_LINE_SIZE_BYTES};
 #else
   #define ALWAYS_INLINE
 #endif
+
+#define __rte_packed __attribute__((__packed__))
+#define __rte_may_alias __attribute__((__may_alias__))
+
+#if defined(X86_ARCHITECTURE_ENABLED)
+namespace rte
+{
+extern "C"
+{
+  static ALWAYS_INLINE void* rte_memcpy(void* dst, const void* src, size_t n);
+
+  static ALWAYS_INLINE void* rte_mov15_or_less(void* dst, const void* src, size_t n)
+  {
+    struct rte_uint64_alias
+    {
+      uint64_t val;
+    } __rte_packed __rte_may_alias;
+    struct rte_uint32_alias
+    {
+      uint32_t val;
+    } __rte_packed __rte_may_alias;
+    struct rte_uint16_alias
+    {
+      uint16_t val;
+    } __rte_packed __rte_may_alias;
+
+    void* ret = dst;
+    if (n & 8)
+    {
+      ((struct rte_uint64_alias*)dst)->val = ((const struct rte_uint64_alias*)src)->val;
+      src = (const uint64_t*)src + 1;
+      dst = (uint64_t*)dst + 1;
+    }
+    if (n & 4)
+    {
+      ((struct rte_uint32_alias*)dst)->val = ((const struct rte_uint32_alias*)src)->val;
+      src = (const uint32_t*)src + 1;
+      dst = (uint32_t*)dst + 1;
+    }
+    if (n & 2)
+    {
+      ((struct rte_uint16_alias*)dst)->val = ((const struct rte_uint16_alias*)src)->val;
+      src = (const uint16_t*)src + 1;
+      dst = (uint16_t*)dst + 1;
+    }
+    if (n & 1)
+      *(uint8_t*)dst = *(const uint8_t*)src;
+    return ret;
+  }
+
+  #if defined __AVX2__
+
+    #define ALIGNMENT_MASK 0x1F
+
+  static ALWAYS_INLINE void rte_mov16(uint8_t* dst, const uint8_t* src)
+  {
+    __m128i xmm0;
+
+    xmm0 = _mm_loadu_si128((const __m128i*)(const void*)src);
+    _mm_storeu_si128((__m128i*)(void*)dst, xmm0);
+  }
+
+  static ALWAYS_INLINE void rte_mov32(uint8_t* dst, const uint8_t* src)
+  {
+    __m256i ymm0;
+
+    ymm0 = _mm256_loadu_si256((const __m256i*)(const void*)src);
+    _mm256_storeu_si256((__m256i*)(void*)dst, ymm0);
+  }
+
+  static ALWAYS_INLINE void rte_mov64(uint8_t* dst, const uint8_t* src)
+  {
+    rte_mov32((uint8_t*)dst + 0 * 32, (const uint8_t*)src + 0 * 32);
+    rte_mov32((uint8_t*)dst + 1 * 32, (const uint8_t*)src + 1 * 32);
+  }
+
+  static ALWAYS_INLINE void rte_mov128(uint8_t* dst, const uint8_t* src)
+  {
+    rte_mov32((uint8_t*)dst + 0 * 32, (const uint8_t*)src + 0 * 32);
+    rte_mov32((uint8_t*)dst + 1 * 32, (const uint8_t*)src + 1 * 32);
+    rte_mov32((uint8_t*)dst + 2 * 32, (const uint8_t*)src + 2 * 32);
+    rte_mov32((uint8_t*)dst + 3 * 32, (const uint8_t*)src + 3 * 32);
+  }
+
+  static ALWAYS_INLINE void rte_mov256(uint8_t* dst, const uint8_t* src)
+  {
+    rte_mov32((uint8_t*)dst + 0 * 32, (const uint8_t*)src + 0 * 32);
+    rte_mov32((uint8_t*)dst + 1 * 32, (const uint8_t*)src + 1 * 32);
+    rte_mov32((uint8_t*)dst + 2 * 32, (const uint8_t*)src + 2 * 32);
+    rte_mov32((uint8_t*)dst + 3 * 32, (const uint8_t*)src + 3 * 32);
+    rte_mov32((uint8_t*)dst + 4 * 32, (const uint8_t*)src + 4 * 32);
+    rte_mov32((uint8_t*)dst + 5 * 32, (const uint8_t*)src + 5 * 32);
+    rte_mov32((uint8_t*)dst + 6 * 32, (const uint8_t*)src + 6 * 32);
+    rte_mov32((uint8_t*)dst + 7 * 32, (const uint8_t*)src + 7 * 32);
+  }
+
+  static ALWAYS_INLINE void rte_mov128blocks(uint8_t* dst, const uint8_t* src, size_t n)
+  {
+    __m256i ymm0, ymm1, ymm2, ymm3;
+
+    while (n >= 128)
+    {
+      ymm0 = _mm256_loadu_si256((const __m256i*)(const void*)((const uint8_t*)src + 0 * 32));
+      n -= 128;
+      ymm1 = _mm256_loadu_si256((const __m256i*)(const void*)((const uint8_t*)src + 1 * 32));
+      ymm2 = _mm256_loadu_si256((const __m256i*)(const void*)((const uint8_t*)src + 2 * 32));
+      ymm3 = _mm256_loadu_si256((const __m256i*)(const void*)((const uint8_t*)src + 3 * 32));
+      src = (const uint8_t*)src + 128;
+      _mm256_storeu_si256((__m256i*)(void*)((uint8_t*)dst + 0 * 32), ymm0);
+      _mm256_storeu_si256((__m256i*)(void*)((uint8_t*)dst + 1 * 32), ymm1);
+      _mm256_storeu_si256((__m256i*)(void*)((uint8_t*)dst + 2 * 32), ymm2);
+      _mm256_storeu_si256((__m256i*)(void*)((uint8_t*)dst + 3 * 32), ymm3);
+      dst = (uint8_t*)dst + 128;
+    }
+  }
+
+  static ALWAYS_INLINE void* rte_memcpy_generic(void* dst, const void* src, size_t n)
+  {
+    void* ret = dst;
+    size_t dstofss;
+    size_t bits;
+
+    if (n < 16)
+    {
+      return rte_mov15_or_less(dst, src, n);
+    }
+
+    if (n <= 32)
+    {
+      rte_mov16((uint8_t*)dst, (const uint8_t*)src);
+      rte_mov16((uint8_t*)dst - 16 + n, (const uint8_t*)src - 16 + n);
+      return ret;
+    }
+    if (n <= 48)
+    {
+      rte_mov16((uint8_t*)dst, (const uint8_t*)src);
+      rte_mov16((uint8_t*)dst + 16, (const uint8_t*)src + 16);
+      rte_mov16((uint8_t*)dst - 16 + n, (const uint8_t*)src - 16 + n);
+      return ret;
+    }
+    if (n <= 64)
+    {
+      rte_mov32((uint8_t*)dst, (const uint8_t*)src);
+      rte_mov32((uint8_t*)dst - 32 + n, (const uint8_t*)src - 32 + n);
+      return ret;
+    }
+    if (n <= 256)
+    {
+      if (n >= 128)
+      {
+        n -= 128;
+        rte_mov128((uint8_t*)dst, (const uint8_t*)src);
+        src = (const uint8_t*)src + 128;
+        dst = (uint8_t*)dst + 128;
+      }
+    COPY_BLOCK_128_BACK31:
+      if (n >= 64)
+      {
+        n -= 64;
+        rte_mov64((uint8_t*)dst, (const uint8_t*)src);
+        src = (const uint8_t*)src + 64;
+        dst = (uint8_t*)dst + 64;
+      }
+      if (n > 32)
+      {
+        rte_mov32((uint8_t*)dst, (const uint8_t*)src);
+        rte_mov32((uint8_t*)dst - 32 + n, (const uint8_t*)src - 32 + n);
+        return ret;
+      }
+      if (n > 0)
+      {
+        rte_mov32((uint8_t*)dst - 32 + n, (const uint8_t*)src - 32 + n);
+      }
+      return ret;
+    }
+
+    dstofss = (uintptr_t)dst & 0x1F;
+    if (dstofss > 0)
+    {
+      dstofss = 32 - dstofss;
+      n -= dstofss;
+      rte_mov32((uint8_t*)dst, (const uint8_t*)src);
+      src = (const uint8_t*)src + dstofss;
+      dst = (uint8_t*)dst + dstofss;
+    }
+
+    rte_mov128blocks((uint8_t*)dst, (const uint8_t*)src, n);
+    bits = n;
+    n = n & 127;
+    bits -= n;
+    src = (const uint8_t*)src + bits;
+    dst = (uint8_t*)dst + bits;
+
+    goto COPY_BLOCK_128_BACK31;
+  }
+
+  #else
+    #define ALIGNMENT_MASK 0x0F
+
+  static ALWAYS_INLINE void rte_mov16(uint8_t* dst, const uint8_t* src)
+  {
+    __m128i xmm0;
+
+    xmm0 = _mm_loadu_si128((const __m128i*)(const void*)src);
+    _mm_storeu_si128((__m128i*)(void*)dst, xmm0);
+  }
+
+  static ALWAYS_INLINE void rte_mov32(uint8_t* dst, const uint8_t* src)
+  {
+    rte_mov16((uint8_t*)dst + 0 * 16, (const uint8_t*)src + 0 * 16);
+    rte_mov16((uint8_t*)dst + 1 * 16, (const uint8_t*)src + 1 * 16);
+  }
+
+  static ALWAYS_INLINE void rte_mov64(uint8_t* dst, const uint8_t* src)
+  {
+    rte_mov16((uint8_t*)dst + 0 * 16, (const uint8_t*)src + 0 * 16);
+    rte_mov16((uint8_t*)dst + 1 * 16, (const uint8_t*)src + 1 * 16);
+    rte_mov16((uint8_t*)dst + 2 * 16, (const uint8_t*)src + 2 * 16);
+    rte_mov16((uint8_t*)dst + 3 * 16, (const uint8_t*)src + 3 * 16);
+  }
+
+  static ALWAYS_INLINE void rte_mov128(uint8_t* dst, const uint8_t* src)
+  {
+    rte_mov16((uint8_t*)dst + 0 * 16, (const uint8_t*)src + 0 * 16);
+    rte_mov16((uint8_t*)dst + 1 * 16, (const uint8_t*)src + 1 * 16);
+    rte_mov16((uint8_t*)dst + 2 * 16, (const uint8_t*)src + 2 * 16);
+    rte_mov16((uint8_t*)dst + 3 * 16, (const uint8_t*)src + 3 * 16);
+    rte_mov16((uint8_t*)dst + 4 * 16, (const uint8_t*)src + 4 * 16);
+    rte_mov16((uint8_t*)dst + 5 * 16, (const uint8_t*)src + 5 * 16);
+    rte_mov16((uint8_t*)dst + 6 * 16, (const uint8_t*)src + 6 * 16);
+    rte_mov16((uint8_t*)dst + 7 * 16, (const uint8_t*)src + 7 * 16);
+  }
+
+  static inline void rte_mov256(uint8_t* dst, const uint8_t* src)
+  {
+    rte_mov16((uint8_t*)dst + 0 * 16, (const uint8_t*)src + 0 * 16);
+    rte_mov16((uint8_t*)dst + 1 * 16, (const uint8_t*)src + 1 * 16);
+    rte_mov16((uint8_t*)dst + 2 * 16, (const uint8_t*)src + 2 * 16);
+    rte_mov16((uint8_t*)dst + 3 * 16, (const uint8_t*)src + 3 * 16);
+    rte_mov16((uint8_t*)dst + 4 * 16, (const uint8_t*)src + 4 * 16);
+    rte_mov16((uint8_t*)dst + 5 * 16, (const uint8_t*)src + 5 * 16);
+    rte_mov16((uint8_t*)dst + 6 * 16, (const uint8_t*)src + 6 * 16);
+    rte_mov16((uint8_t*)dst + 7 * 16, (const uint8_t*)src + 7 * 16);
+    rte_mov16((uint8_t*)dst + 8 * 16, (const uint8_t*)src + 8 * 16);
+    rte_mov16((uint8_t*)dst + 9 * 16, (const uint8_t*)src + 9 * 16);
+    rte_mov16((uint8_t*)dst + 10 * 16, (const uint8_t*)src + 10 * 16);
+    rte_mov16((uint8_t*)dst + 11 * 16, (const uint8_t*)src + 11 * 16);
+    rte_mov16((uint8_t*)dst + 12 * 16, (const uint8_t*)src + 12 * 16);
+    rte_mov16((uint8_t*)dst + 13 * 16, (const uint8_t*)src + 13 * 16);
+    rte_mov16((uint8_t*)dst + 14 * 16, (const uint8_t*)src + 14 * 16);
+    rte_mov16((uint8_t*)dst + 15 * 16, (const uint8_t*)src + 15 * 16);
+  }
+
+    #define MOVEUNALIGNED_LEFT47_IMM(dst, src, len, offset)                                                   \
+      __extension__({                                                                                         \
+        size_t tmp;                                                                                           \
+        while (len >= 128 + 16 - offset)                                                                      \
+        {                                                                                                     \
+          xmm0 = _mm_loadu_si128((const __m128i*)(const void*)((const uint8_t*)src - offset + 0 * 16));       \
+          len -= 128;                                                                                         \
+          xmm1 = _mm_loadu_si128((const __m128i*)(const void*)((const uint8_t*)src - offset + 1 * 16));       \
+          xmm2 = _mm_loadu_si128((const __m128i*)(const void*)((const uint8_t*)src - offset + 2 * 16));       \
+          xmm3 = _mm_loadu_si128((const __m128i*)(const void*)((const uint8_t*)src - offset + 3 * 16));       \
+          xmm4 = _mm_loadu_si128((const __m128i*)(const void*)((const uint8_t*)src - offset + 4 * 16));       \
+          xmm5 = _mm_loadu_si128((const __m128i*)(const void*)((const uint8_t*)src - offset + 5 * 16));       \
+          xmm6 = _mm_loadu_si128((const __m128i*)(const void*)((const uint8_t*)src - offset + 6 * 16));       \
+          xmm7 = _mm_loadu_si128((const __m128i*)(const void*)((const uint8_t*)src - offset + 7 * 16));       \
+          xmm8 = _mm_loadu_si128((const __m128i*)(const void*)((const uint8_t*)src - offset + 8 * 16));       \
+          src = (const uint8_t*)src + 128;                                                                    \
+          _mm_storeu_si128((__m128i*)(void*)((uint8_t*)dst + 0 * 16), _mm_alignr_epi8(xmm1, xmm0, offset));   \
+          _mm_storeu_si128((__m128i*)(void*)((uint8_t*)dst + 1 * 16), _mm_alignr_epi8(xmm2, xmm1, offset));   \
+          _mm_storeu_si128((__m128i*)(void*)((uint8_t*)dst + 2 * 16), _mm_alignr_epi8(xmm3, xmm2, offset));   \
+          _mm_storeu_si128((__m128i*)(void*)((uint8_t*)dst + 3 * 16), _mm_alignr_epi8(xmm4, xmm3, offset));   \
+          _mm_storeu_si128((__m128i*)(void*)((uint8_t*)dst + 4 * 16), _mm_alignr_epi8(xmm5, xmm4, offset));   \
+          _mm_storeu_si128((__m128i*)(void*)((uint8_t*)dst + 5 * 16), _mm_alignr_epi8(xmm6, xmm5, offset));   \
+          _mm_storeu_si128((__m128i*)(void*)((uint8_t*)dst + 6 * 16), _mm_alignr_epi8(xmm7, xmm6, offset));   \
+          _mm_storeu_si128((__m128i*)(void*)((uint8_t*)dst + 7 * 16), _mm_alignr_epi8(xmm8, xmm7, offset));   \
+          dst = (uint8_t*)dst + 128;                                                                          \
+        }                                                                                                     \
+        tmp = len;                                                                                            \
+        len = ((len - 16 + offset) & 127) + 16 - offset;                                                      \
+        tmp -= len;                                                                                           \
+        src = (const uint8_t*)src + tmp;                                                                      \
+        dst = (uint8_t*)dst + tmp;                                                                            \
+        if (len >= 32 + 16 - offset)                                                                          \
+        {                                                                                                     \
+          while (len >= 32 + 16 - offset)                                                                     \
+          {                                                                                                   \
+            xmm0 = _mm_loadu_si128((const __m128i*)(const void*)((const uint8_t*)src - offset + 0 * 16));     \
+            len -= 32;                                                                                        \
+            xmm1 = _mm_loadu_si128((const __m128i*)(const void*)((const uint8_t*)src - offset + 1 * 16));     \
+            xmm2 = _mm_loadu_si128((const __m128i*)(const void*)((const uint8_t*)src - offset + 2 * 16));     \
+            src = (const uint8_t*)src + 32;                                                                   \
+            _mm_storeu_si128((__m128i*)(void*)((uint8_t*)dst + 0 * 16), _mm_alignr_epi8(xmm1, xmm0, offset)); \
+            _mm_storeu_si128((__m128i*)(void*)((uint8_t*)dst + 1 * 16), _mm_alignr_epi8(xmm2, xmm1, offset)); \
+            dst = (uint8_t*)dst + 32;                                                                         \
+          }                                                                                                   \
+          tmp = len;                                                                                          \
+          len = ((len - 16 + offset) & 31) + 16 - offset;                                                     \
+          tmp -= len;                                                                                         \
+          src = (const uint8_t*)src + tmp;                                                                    \
+          dst = (uint8_t*)dst + tmp;                                                                          \
+        }                                                                                                     \
+      })
+
+    #define MOVEUNALIGNED_LEFT47(dst, src, len, offset)                                            \
+      __extension__({                                                                              \
+        switch (offset)                                                                            \
+        {                                                                                          \
+        case 0x01:                                                                                 \
+          MOVEUNALIGNED_LEFT47_IMM(dst, src, n, 0x01);                                             \
+          break;                                                                                   \
+        case 0x02:                                                                                 \
+          MOVEUNALIGNED_LEFT47_IMM(dst, src, n, 0x02);                                             \
+          break;                                                                                   \
+        case 0x03:                                                                                 \
+          MOVEUNALIGNED_LEFT47_IMM(dst, src, n, 0x03);                                             \
+          break;                                                                                   \
+        case 0x04:                                                                                 \
+          MOVEUNALIGNED_LEFT47_IMM(dst, src, n, 0x04);                                             \
+          break;                                                                                   \
+        case 0x05:                                                                                 \
+          MOVEUNALIGNED_LEFT47_IMM(dst, src, n, 0x05);                                             \
+          break;                                                                                   \
+        case 0x06:                                                                                 \
+          MOVEUNALIGNED_LEFT47_IMM(dst, src, n, 0x06);                                             \
+          break;                                                                                   \
+        case 0x07:                                                                                 \
+          MOVEUNALIGNED_LEFT47_IMM(dst, src, n, 0x07);                                             \
+          break;                                                                                   \
+        case 0x08:                                                                                 \
+          MOVEUNALIGNED_LEFT47_IMM(dst, src, n, 0x08);                                             \
+          break;                                                                                   \
+        case 0x09:                                                                                 \
+          MOVEUNALIGNED_LEFT47_IMM(dst, src, n, 0x09);                                             \
+          break;                                                                                   \
+        case 0x0A:                                                                                 \
+          MOVEUNALIGNED_LEFT47_IMM(dst, src, n, 0x0A);                                             \
+          break;                                                                                   \
+        case 0x0B:                                                                                 \
+          MOVEUNALIGNED_LEFT47_IMM(dst, src, n, 0x0B);                                             \
+          break;                                                                                   \
+        case 0x0C:                                                                                 \
+          MOVEUNALIGNED_LEFT47_IMM(dst, src, n, 0x0C);                                             \
+          break;                                                                                   \
+        case 0x0D:                                                                                 \
+          MOVEUNALIGNED_LEFT47_IMM(dst, src, n, 0x0D);                                             \
+          break;                                                                                   \
+        case 0x0E:                                                                                 \
+          MOVEUNALIGNED_LEFT47_IMM(dst, src, n, 0x0E);                                             \
+          break;                                                                                   \
+        case 0x0F:                                                                                 \
+          MOVEUNALIGNED_LEFT47_IMM(dst, src, n, 0x0F);                                             \
+          break;                                                                                   \
+        default:;                                                                                  \
+        }                                                                                          \
+      })
+
+  static ALWAYS_INLINE void* rte_memcpy_generic(void* dst, const void* src, size_t n)
+  {
+    __m128i xmm0, xmm1, xmm2, xmm3, xmm4, xmm5, xmm6, xmm7, xmm8;
+    void* ret = dst;
+    size_t dstofss;
+    size_t srcofs;
+
+    if (n < 16)
+    {
+      return rte_mov15_or_less(dst, src, n);
+    }
+
+    if (n <= 32)
+    {
+      rte_mov16((uint8_t*)dst, (const uint8_t*)src);
+      rte_mov16((uint8_t*)dst - 16 + n, (const uint8_t*)src - 16 + n);
+      return ret;
+    }
+    if (n <= 48)
+    {
+      rte_mov32((uint8_t*)dst, (const uint8_t*)src);
+      rte_mov16((uint8_t*)dst - 16 + n, (const uint8_t*)src - 16 + n);
+      return ret;
+    }
+    if (n <= 64)
+    {
+      rte_mov32((uint8_t*)dst, (const uint8_t*)src);
+      rte_mov16((uint8_t*)dst + 32, (const uint8_t*)src + 32);
+      rte_mov16((uint8_t*)dst - 16 + n, (const uint8_t*)src - 16 + n);
+      return ret;
+    }
+    if (n <= 128)
+    {
+      goto COPY_BLOCK_128_BACK15;
+    }
+    if (n <= 512)
+    {
+      if (n >= 256)
+      {
+        n -= 256;
+        rte_mov128((uint8_t*)dst, (const uint8_t*)src);
+        rte_mov128((uint8_t*)dst + 128, (const uint8_t*)src + 128);
+        src = (const uint8_t*)src + 256;
+        dst = (uint8_t*)dst + 256;
+      }
+    COPY_BLOCK_255_BACK15:
+      if (n >= 128)
+      {
+        n -= 128;
+        rte_mov128((uint8_t*)dst, (const uint8_t*)src);
+        src = (const uint8_t*)src + 128;
+        dst = (uint8_t*)dst + 128;
+      }
+    COPY_BLOCK_128_BACK15:
+      if (n >= 64)
+      {
+        n -= 64;
+        rte_mov64((uint8_t*)dst, (const uint8_t*)src);
+        src = (const uint8_t*)src + 64;
+        dst = (uint8_t*)dst + 64;
+      }
+    COPY_BLOCK_64_BACK15:
+      if (n >= 32)
+      {
+        n -= 32;
+        rte_mov32((uint8_t*)dst, (const uint8_t*)src);
+        src = (const uint8_t*)src + 32;
+        dst = (uint8_t*)dst + 32;
+      }
+      if (n > 16)
+      {
+        rte_mov16((uint8_t*)dst, (const uint8_t*)src);
+        rte_mov16((uint8_t*)dst - 16 + n, (const uint8_t*)src - 16 + n);
+        return ret;
+      }
+      if (n > 0)
+      {
+        rte_mov16((uint8_t*)dst - 16 + n, (const uint8_t*)src - 16 + n);
+      }
+      return ret;
+    }
+
+    dstofss = (uintptr_t)dst & 0x0F;
+    if (dstofss > 0)
+    {
+      dstofss = 16 - dstofss + 16;
+      n -= dstofss;
+      rte_mov32((uint8_t*)dst, (const uint8_t*)src);
+      src = (const uint8_t*)src + dstofss;
+      dst = (uint8_t*)dst + dstofss;
+    }
+    srcofs = ((uintptr_t)src & 0x0F);
+
+    if (srcofs == 0)
+    {
+      for (; n >= 256; n -= 256)
+      {
+        rte_mov256((uint8_t*)dst, (const uint8_t*)src);
+        dst = (uint8_t*)dst + 256;
+        src = (const uint8_t*)src + 256;
+      }
+
+      goto COPY_BLOCK_255_BACK15;
+    }
+
+    MOVEUNALIGNED_LEFT47(dst, src, n, srcofs);
+
+    goto COPY_BLOCK_64_BACK15;
+  }
+
+  #endif
+
+  static ALWAYS_INLINE void* rte_memcpy_aligned(void* dst, const void* src, size_t n)
+  {
+    void* ret = dst;
+
+    if (n < 16)
+    {
+      return rte_mov15_or_less(dst, src, n);
+    }
+
+    if (n <= 32)
+    {
+      rte_mov16((uint8_t*)dst, (const uint8_t*)src);
+      rte_mov16((uint8_t*)dst - 16 + n, (const uint8_t*)src - 16 + n);
+
+      return ret;
+    }
+
+    if (n <= 64)
+    {
+      rte_mov32((uint8_t*)dst, (const uint8_t*)src);
+      rte_mov32((uint8_t*)dst - 32 + n, (const uint8_t*)src - 32 + n);
+
+      return ret;
+    }
+
+    for (; n > 64; n -= 64)
+    {
+      rte_mov64((uint8_t*)dst, (const uint8_t*)src);
+      dst = (uint8_t*)dst + 64;
+      src = (const uint8_t*)src + 64;
+    }
+
+    rte_mov64((uint8_t*)dst - 64 + n, (const uint8_t*)src - 64 + n);
+
+    return ret;
+  }
+
+  static ALWAYS_INLINE void* rte_memcpy(void* dst, const void* src, size_t n)
+  {
+    if (!(((uintptr_t)dst | (uintptr_t)src) & ALIGNMENT_MASK))
+      return rte_memcpy_aligned(dst, src, n);
+    else
+      return rte_memcpy_generic(dst, src, n);
+  }
+
+  #undef ALIGNMENT_MASK
+}
+} // namespace rte
+#endif
+
+namespace bitlog
+{
+
+// Constants
+static constexpr size_t CACHE_LINE_SIZE_BYTES{64u};
+static constexpr size_t CACHE_LINE_ALIGNED{2 * CACHE_LINE_SIZE_BYTES};
 
 /**
  * Checks if a number is a power of 2
@@ -236,124 +758,99 @@ public:
    * @brief Initializes Creates shared memory for storage, metadata, lock, and ready indicators.
    *
    * @param capacity The capacity of the shared memory storage.
-   * @param shm_sub_dir The sub-directory within shared memory.
-   * @param unique_id An optional unique identifier for the queue (default is an empty string).
+   * @param path_base The path within shared memory.
    * @param page_size The size of memory pages (default is RegularPage).
-   * @param shm_root_dir The root directory for shared memory (default is an empty path, resolving to /dev/shm or /tmp).
    * @param reader_store_percentage The percentage of memory reserved for the reader (default is 5%).
    *
    * @return An std::error_code indicating the success or failure of the initialization.
    */
-  [[nodiscard]] std::error_code create(integer_type capacity, std::filesystem::path const& shm_sub_dir,
-                                       std::string unique_id = std::string{},
+  [[nodiscard]] std::error_code create(integer_type capacity, std::filesystem::path path_base,
                                        MemoryPageSize page_size = MemoryPageSize::RegularPage,
-                                       std::filesystem::path const& shm_root_dir = std::filesystem::path{},
                                        integer_type reader_store_percentage = 5) noexcept
   {
     std::error_code ec{};
 
-    // First resolve shm path
-    std::expected<std::filesystem::path, std::error_code> const shm_path =
-      _resolve_shm_path(shm_root_dir, shm_sub_dir);
+    // capacity must be always rounded to page size otherwise mmap will fail
+    capacity = round_up_to_nearest(capacity, static_cast<integer_type>(get_page_size(page_size)));
 
-    if (shm_path.has_value())
+    // 1. Create a storage file in shared memory
+    path_base.replace_extension(".data");
+    int storage_fd = ::open(path_base.c_str(), O_CREAT | O_RDWR | O_EXCL, 0660);
+
+    if (storage_fd >= 0)
     {
-      // capacity must be always rounded to page size otherwise mmap will fail
-      capacity = round_up_to_nearest(capacity, static_cast<integer_type>(get_page_size(page_size)));
-
-      if (unique_id.empty())
+      if (ftruncate(storage_fd, static_cast<off_t>(capacity)) == 0)
       {
-        unique_id = std::to_string(get_thread_id()) + "_" +
-          std::to_string(std::chrono::duration_cast<std::chrono::nanoseconds>(
-                           std::chrono::system_clock::now().time_since_epoch())
-                           .count());
-      }
+        ec = _memory_map_storage(storage_fd, capacity, page_size);
 
-      // 1. Create a storage file in shared memory
-      std::filesystem::path shm_file_base = *shm_path / unique_id;
-
-      shm_file_base.replace_extension(".storage");
-      int storage_fd = ::open(shm_file_base.c_str(), O_CREAT | O_RDWR | O_EXCL, 0660);
-
-      if (storage_fd >= 0)
-      {
-        if (ftruncate(storage_fd, static_cast<off_t>(capacity)) == 0)
+        if (!ec)
         {
-          ec = _memory_map_storage(storage_fd, capacity, page_size);
+          std::memset(_storage, 0, capacity);
 
-          if (!ec)
+          // 2. Create metadata file in shared memory
+          path_base.replace_extension("members");
+          int metadata_fd = ::open(path_base.c_str(), O_CREAT | O_RDWR | O_EXCL, 0660);
+
+          if (metadata_fd >= 0)
           {
-            std::memset(_storage, 0, capacity);
-
-            // 2. Create metadata file in shared memory
-            shm_file_base.replace_extension("metadata");
-            int metadata_fd = ::open(shm_file_base.c_str(), O_CREAT | O_RDWR | O_EXCL, 0660);
-
-            if (metadata_fd >= 0)
+            if (ftruncate(metadata_fd, static_cast<off_t>(sizeof(Metadata))) == 0)
             {
-              if (ftruncate(metadata_fd, static_cast<off_t>(sizeof(Metadata))) == 0)
+              ec = _memory_map_metadata(metadata_fd, sizeof(Metadata), page_size);
+
+              if (!ec)
               {
-                ec = _memory_map_metadata(metadata_fd, sizeof(Metadata), page_size);
+                std::memset(_metadata, 0, sizeof(Metadata));
 
-                if (!ec)
+                _metadata->capacity = capacity;
+                _metadata->mask = capacity - 1;
+                _metadata->bytes_per_batch =
+                  static_cast<integer_type>(capacity * static_cast<double>(reader_store_percentage) / 100.0);
+                _metadata->atomic_writer_pos = 0;
+                _metadata->writer_pos = 0;
+                _metadata->last_flushed_writer_pos = 0;
+                _metadata->reader_pos_cache = 0;
+                _metadata->atomic_reader_pos = 0;
+                _metadata->reader_pos = 0;
+                _metadata->last_flushed_reader_pos = 0;
+                _metadata->writer_pos_cache = 0;
+
+                // 3. Create a lock file that works as a heartbeat mechanism for the reader
+                path_base.replace_extension("lock");
+                _filelock_fd = ::open(path_base.c_str(), O_CREAT | O_RDWR | O_EXCL, 0660);
+
+                if (_filelock_fd >= 0)
                 {
-                  std::memset(_metadata, 0, sizeof(Metadata));
-
-                  _metadata->capacity = capacity;
-                  _metadata->mask = capacity - 1;
-                  _metadata->bytes_per_batch =
-                    static_cast<integer_type>(capacity * static_cast<double>(reader_store_percentage) / 100.0);
-                  _metadata->atomic_writer_pos = 0;
-                  _metadata->writer_pos = 0;
-                  _metadata->last_flushed_writer_pos = 0;
-                  _metadata->reader_pos_cache = 0;
-                  _metadata->atomic_reader_pos = 0;
-                  _metadata->reader_pos = 0;
-                  _metadata->last_flushed_reader_pos = 0;
-                  _metadata->writer_pos_cache = 0;
-
-                  // 3. Create a lock file that works as a heartbeat mechanism for the reader
-                  shm_file_base.replace_extension("lock");
-                  _filelock_fd = ::open(shm_file_base.c_str(), O_CREAT | O_RDWR | O_EXCL, 0660);
-
-                  if (_filelock_fd >= 0)
+                  if (::flock(_filelock_fd, LOCK_EX | LOCK_NB) == 0)
                   {
-                    if (::flock(_filelock_fd, LOCK_EX | LOCK_NB) == 0)
+                    // 4. Create a ready file, indicating everything is ready and initialised and
+                    // the reader can start loading the files
+                    path_base.replace_extension("ready");
+                    int readyfile_fd = ::open(path_base.c_str(), O_CREAT | O_RDWR | O_EXCL, 0660);
+
+                    if (readyfile_fd >= 0)
                     {
-                      // 4. Create a ready file, indicating everything is ready and initialised and
-                      // the reader can start loading the files
-                      shm_file_base.replace_extension("ready");
-                      int readyfile_fd = ::open(shm_file_base.c_str(), O_CREAT | O_RDWR | O_EXCL, 0660);
+                      ::close(readyfile_fd);
 
-                      if (readyfile_fd >= 0)
-                      {
-                        ::close(readyfile_fd);
-
-                        // Queue creation is done
+                      // Queue creation is done
 #if defined(X86_ARCHITECTURE_ENABLED)
-                        if constexpr (X86_CACHE_COHERENCE_OPTIMIZATION)
-                        {
-                          // remove log memory from cache
-                          for (uint64_t i = 0; i < (2ull * static_cast<uint64_t>(_metadata->capacity));
-                               i += CACHE_LINE_SIZE_BYTES)
-                          {
-                            _mm_clflush(_storage + i);
-                          }
-
-                          uint64_t constexpr prefetched_cache_lines = 16;
-
-                          for (uint64_t i = 0; i < prefetched_cache_lines; ++i)
-                          {
-                            _mm_prefetch(
-                              reinterpret_cast<char const*>(_storage + (CACHE_LINE_SIZE_BYTES * i)), _MM_HINT_T0);
-                          }
-                        }
-#endif
-                      }
-                      else
+                      if constexpr (X86_CACHE_COHERENCE_OPTIMIZATION)
                       {
-                        ec = std::error_code{errno, std::generic_category()};
+                        // remove log memory from cache
+                        for (uint64_t i = 0; i < (2ull * static_cast<uint64_t>(_metadata->capacity));
+                             i += CACHE_LINE_SIZE_BYTES)
+                        {
+                          _mm_clflush(_storage + i);
+                        }
+
+                        uint64_t constexpr prefetched_cache_lines = 16;
+
+                        for (uint64_t i = 0; i < prefetched_cache_lines; ++i)
+                        {
+                          _mm_prefetch(
+                            reinterpret_cast<char const*>(_storage + (CACHE_LINE_SIZE_BYTES * i)), _MM_HINT_T0);
+                        }
                       }
+#endif
                     }
                     else
                     {
@@ -365,35 +862,35 @@ public:
                     ec = std::error_code{errno, std::generic_category()};
                   }
                 }
+                else
+                {
+                  ec = std::error_code{errno, std::generic_category()};
+                }
               }
-              else
-              {
-                ec = std::error_code{errno, std::generic_category()};
-              }
-
-              ::close(metadata_fd);
             }
             else
             {
               ec = std::error_code{errno, std::generic_category()};
             }
+
+            ::close(metadata_fd);
+          }
+          else
+          {
+            ec = std::error_code{errno, std::generic_category()};
           }
         }
-        else
-        {
-          ec = std::error_code{errno, std::generic_category()};
-        }
-
-        ::close(storage_fd);
       }
       else
       {
         ec = std::error_code{errno, std::generic_category()};
       }
+
+      ::close(storage_fd);
     }
     else
     {
-      ec = shm_path.error();
+      ec = std::error_code{errno, std::generic_category()};
     }
 
     return ec;
@@ -403,84 +900,67 @@ public:
    * @brief Opens existing shared memory storage and metadata files associated with a specified postfix ID.
    *
    * @param unique_id The unique ID used to identify the storage and metadata files.
-   * @param shm_sub_dir The sub-directory within shared memory.
+   * @param path_base The path within shared memory.
    * @param page_size The size of memory pages (default is RegularPage).
-   * @param shm_root_dir The root directory for shared memory (default is an empty path).
    *
    * @return An std::error_code indicating the success or failure of the initialization.
    */
-  [[nodiscard]] std::error_code open(std::string const& unique_id, std::filesystem::path const& shm_sub_dir,
-                                     MemoryPageSize page_size = MemoryPageSize::RegularPage,
-                                     std::filesystem::path const& shm_root_dir = std::filesystem::path{}) noexcept
+  [[nodiscard]] std::error_code open(std::string const& unique_id, std::filesystem::path path_base,
+                                     MemoryPageSize page_size = MemoryPageSize::RegularPage) noexcept
   {
     std::error_code ec{};
 
-    // First resolve shm directories
-    std::expected<std::filesystem::path, std::error_code> const shm_path =
-      _resolve_shm_path(shm_root_dir, shm_sub_dir);
+    path_base.replace_extension("data");
+    int storage_fd = ::open(path_base.c_str(), O_RDWR, 0660);
 
-    if (shm_path.has_value())
+    if (storage_fd >= 0)
     {
-      // We will only load the storage and metadata files. The ready and lock files are handled
-      // in a different function
-      std::filesystem::path shm_file_base = *shm_path / unique_id;
+      size_t const storage_file_size = std::filesystem::file_size(path_base, ec);
 
-      shm_file_base.replace_extension("storage");
-      int storage_fd = ::open(shm_file_base.c_str(), O_RDWR, 0660);
-
-      if (storage_fd >= 0)
+      if (!ec)
       {
-        size_t const storage_file_size = std::filesystem::file_size(shm_file_base, ec);
+        ec = _memory_map_storage(storage_fd, storage_file_size, page_size);
 
         if (!ec)
         {
-          ec = _memory_map_storage(storage_fd, storage_file_size, page_size);
+          path_base.replace_extension("members");
+          int metadata_fd = ::open(path_base.c_str(), O_RDWR, 0660);
 
-          if (!ec)
+          if (metadata_fd >= 0)
           {
-            shm_file_base.replace_extension("metadata");
-            int metadata_fd = ::open(shm_file_base.c_str(), O_RDWR, 0660);
+            size_t const metadata_file_size = std::filesystem::file_size(path_base, ec);
 
-            if (metadata_fd >= 0)
+            if (!ec)
             {
-              size_t const metadata_file_size = std::filesystem::file_size(shm_file_base, ec);
+              ec = _memory_map_metadata(metadata_fd, metadata_file_size, page_size);
 
               if (!ec)
               {
-                ec = _memory_map_metadata(metadata_fd, metadata_file_size, page_size);
+                // finally we can also open the lockfile
+                path_base.replace_extension("lock");
+                _filelock_fd = ::open(path_base.c_str(), O_RDWR, 0660);
 
-                if (!ec)
+                if (_filelock_fd == -1)
                 {
-                  // finally we can also open the lockfile
-                  shm_file_base.replace_extension("lock");
-                  _filelock_fd = ::open(shm_file_base.c_str(), O_RDWR, 0660);
-
-                  if (_filelock_fd == -1)
-                  {
-                    ec = std::error_code{errno, std::generic_category()};
-                  }
+                  ec = std::error_code{errno, std::generic_category()};
                 }
               }
+            }
 
-              ::close(metadata_fd);
-            }
-            else
-            {
-              ec = std::error_code{errno, std::generic_category()};
-            }
+            ::close(metadata_fd);
+          }
+          else
+          {
+            ec = std::error_code{errno, std::generic_category()};
           }
         }
+      }
 
-        ::close(storage_fd);
-      }
-      else
-      {
-        ec = std::error_code{errno, std::generic_category()};
-      }
+      ::close(storage_fd);
     }
     else
     {
-      ec = shm_path.error();
+      ec = std::error_code{errno, std::generic_category()};
     }
 
     return ec;
@@ -493,75 +973,49 @@ public:
    * from filenames that match the "ready-" pattern.
    *
    * @param unique_ids A vector to store the unique IDs found in the filenames.
-   * @param shm_sub_dir The sub-directory within shared memory.
-   * @param shm_root_dir The root directory for shared memory (default is an empty path).
+   * @param path_base The path within shared memory.
    *
    * @return An std::error_code indicating the success or failure of the discovery process.
    */
-  [[nodiscard]] static std::error_code discover_writers(
-    std::vector<std::string>& unique_ids, std::filesystem::path const& shm_sub_dir,
-    std::filesystem::path const& shm_root_dir = std::filesystem::path{}) noexcept
+  [[nodiscard]] static std::error_code discover_writers(std::vector<std::string>& unique_ids,
+                                                        std::filesystem::path const& path_base) noexcept
   {
     std::error_code ec{};
 
     unique_ids.clear();
 
-    // First resolve shm directories
-    std::expected<std::filesystem::path, std::error_code> const shm_path =
-      _resolve_shm_path(shm_root_dir, shm_sub_dir);
+    auto di = std::filesystem::directory_iterator(path_base, ec);
 
-    if (shm_path.has_value())
+    if (!ec)
     {
-      auto di = std::filesystem::directory_iterator(*shm_path, ec);
-
-      if (!ec)
+      for (auto const& entry : di)
       {
-        for (auto const& entry : di)
+        if (entry.is_regular_file())
         {
-          if (entry.is_regular_file())
+          if (entry.path().extension().string() == ".ready")
           {
-            if (entry.path().extension().string() == ".ready")
-            {
-              unique_ids.emplace_back(entry.path().filename().stem());
-            }
+            unique_ids.emplace_back(entry.path().filename().stem());
           }
         }
       }
     }
-    else
-    {
-      ec = shm_path.error();
-    }
-
     return ec;
   }
 
-  [[nodiscard]] static std::expected<bool, std::error_code> is_created(
-    std::string const& unique_id, std::filesystem::path const& shm_sub_dir,
-    std::filesystem::path const& shm_root_dir = std::filesystem::path{})
+  [[nodiscard]] static std::expected<bool, std::error_code> is_created(std::string const& unique_id,
+                                                                       std::filesystem::path const& path_base)
   {
     std::expected<bool, std::error_code> created;
 
-    // First resolve shm directories
-    std::expected<std::filesystem::path, std::error_code> const shm_path =
-      _resolve_shm_path(shm_root_dir, shm_sub_dir);
+    std::filesystem::path shm_file_base = path_base / unique_id;
+    shm_file_base.replace_extension(".ready");
 
-    if (shm_path.has_value())
+    std::error_code ec;
+    created = std::filesystem::exists(shm_file_base, ec);
+
+    if (ec)
     {
-      std::filesystem::path shm_file_base = *shm_path / unique_id;
-      shm_file_base.replace_extension(".ready");
-
-      std::error_code ec;
-      created = std::filesystem::exists(shm_file_base, ec);
-
-      if (ec)
-      {
-        created = std::unexpected{ec};
-      }
-    }
-    else
-    {
-      created = std::unexpected{shm_path.error()};
+      created = std::unexpected{ec};
     }
 
     return created;
@@ -574,40 +1028,27 @@ public:
    * associated with a specified unique identifier.
    *
    * @param unique_id The unique identifier used to identify the shared memory files.
-   * @param shm_sub_dir The sub-directory within shared memory.
-   * @param shm_root_dir The root directory for shared memory (default is an empty path, resolving to /dev/shm or /tmp).
+   * @param path_base The path within shared memory.
    *
    * @return An std::error_code indicating the success or failure
    */
-  [[nodiscard]] static std::error_code remove_shm_files(
-    std::string const& unique_id, std::filesystem::path const& shm_sub_dir,
-    std::filesystem::path const& shm_root_dir = std::filesystem::path{}) noexcept
+  [[nodiscard]] static std::error_code remove_shm_files(std::string const& unique_id,
+                                                        std::filesystem::path path_base) noexcept
   {
     std::error_code ec{};
 
-    // First resolve shm directories
-    std::expected<std::filesystem::path, std::error_code> const shm_path =
-      _resolve_shm_path(shm_root_dir, shm_sub_dir);
+    std::filesystem::path shm_file_base = path_base / unique_id;
+    shm_file_base.replace_extension(".data");
+    std::filesystem::remove(shm_file_base, ec);
 
-    if (shm_path.has_value())
-    {
-      std::filesystem::path shm_file_base = *shm_path / unique_id;
-      shm_file_base.replace_extension(".storage");
-      std::filesystem::remove(shm_file_base, ec);
+    shm_file_base.replace_extension(".members");
+    std::filesystem::remove(shm_file_base, ec);
 
-      shm_file_base.replace_extension(".metadata");
-      std::filesystem::remove(shm_file_base, ec);
+    shm_file_base.replace_extension(".ready");
+    std::filesystem::remove(shm_file_base, ec);
 
-      shm_file_base.replace_extension(".ready");
-      std::filesystem::remove(shm_file_base, ec);
-
-      shm_file_base.replace_extension(".lock");
-      std::filesystem::remove(shm_file_base, ec);
-    }
-    else
-    {
-      ec = shm_path.error();
-    }
+    shm_file_base.replace_extension(".lock");
+    std::filesystem::remove(shm_file_base, ec);
 
     return ec;
   }
@@ -780,42 +1221,6 @@ public:
   [[nodiscard]] integer_type capacity() const noexcept { return _metadata->capacity; }
 
 private:
-  /**
-   * @brief Resolves the path for shared memory storage.
-   *
-   * Resolves the path for shared memory storage based on the provided root directory
-   * and sub-directory within the shared memory.
-   *
-   * @param shm_root_dir The root directory for shared memory.
-   * @param shm_sub_dir The sub-directory within shared memory.
-   * @return An expected filesystem path if the resolution is successful, otherwise an error code.
-   */
-  [[nodiscard]] static std::expected<std::filesystem::path, std::error_code> _resolve_shm_path(
-    std::filesystem::path shm_root_dir, std::filesystem::path const& shm_sub_dir) noexcept
-  {
-    // resolve shared memory directories
-    if (shm_root_dir.empty())
-    {
-      if (std::filesystem::exists("/dev/shm"))
-      {
-        shm_root_dir = "/dev/shm";
-      }
-      else if (std::filesystem::exists("/tmp"))
-      {
-        shm_root_dir = "/tmp";
-      }
-    }
-
-    std::filesystem::path shm_path = shm_root_dir / shm_sub_dir;
-
-    if (!std::filesystem::exists(shm_path))
-    {
-      return std::unexpected{std::error_code{ErrorCode::InvalidSharedMemoryPath, std::generic_category()}};
-    }
-
-    return shm_path;
-  }
-
   /**
    * @brief Resolves the flags for memory mapping based on the specified page size.
    *
@@ -1123,26 +1528,38 @@ struct MacroMetadataNode;
 }
 
 /**
- * Node to store macro metadata
+ * @brief Generates unique IDs for instances of the specified template parameter type.
+ *
+ * This class is designed to produce unique identifiers, which can be utilized for various purposes
+ * such as managing metadata, loggers, thread contexts.
  */
-struct MacroMetadataNode
+template <typename TDerived>
+struct UniqueId
 {
-  explicit MacroMetadataNode(MacroMetadata const& macro_metadata)
-    : id(_gen_unique_id()), macro_metadata(macro_metadata), next(std::exchange(macro_metadata_head(), this))
-  {
-  }
-
+public:
+  UniqueId() : id(_gen_id()) {}
   uint32_t const id;
-  MacroMetadata const& macro_metadata;
-  MacroMetadataNode const* next;
 
 private:
-  [[nodiscard]] static uint32_t _gen_unique_id() noexcept
+  [[nodiscard]] static uint32_t _gen_id() noexcept
   {
-    static uint32_t unique_id{0};
-    ++unique_id;
-    return unique_id;
+    static std::atomic<uint32_t> unique_id{0};
+    return unique_id.fetch_add(1u, std::memory_order_relaxed);
   }
+};
+
+/**
+ * Node to store macro metadata
+ */
+struct MacroMetadataNode : public UniqueId<MacroMetadataNode>
+{
+  explicit MacroMetadataNode(MacroMetadata const& macro_metadata)
+    : macro_metadata(macro_metadata), next(std::exchange(macro_metadata_head(), this))
+  {
+  }
+
+  MacroMetadata const& macro_metadata;
+  MacroMetadataNode const* next;
 };
 
 /**
@@ -1151,20 +1568,22 @@ private:
 template <StringLiteral File, StringLiteral Function, uint32_t Line, LogLevel Level, StringLiteral LogFormat, typename... Args>
 MacroMetadataNode marco_metadata_node{get_macro_metadata<File, Function, Line, Level, LogFormat, Args...>()};
 
-template <typename TQueue>
-class ThreadContext
+template <typename TConfig>
+class ThreadContext : public UniqueId<ThreadContext<TConfig>>
 {
 public:
-  using queue_t = TQueue;
+  using queue_t = typename TConfig::queue_t;
 
   ThreadContext(ThreadContext const&) = delete;
   ThreadContext& operator=(ThreadContext const&) = delete;
 
-  ThreadContext()
+  ThreadContext(TConfig const& config) : _config(config)
   {
     // TODO:: capacity and application_instance_id, also need to mkdir application_instance_id
     // TODO:: std::error_code res = _queue.create(4096, "application_instance_id");
-    std::error_code res = _queue.create(4096, std::filesystem::path{});
+
+    std::string const queue_file_base = std::format("{}.{}.ext", this->id, _queue_id++);
+    std::error_code res = _queue.create(4096, _config.instance_dir() / queue_file_base);
 
     if (res)
     {
@@ -1175,7 +1594,9 @@ public:
   [[nodiscard]] queue_t& get_queue() noexcept { return _queue; }
 
 private:
+  TConfig const& _config;
   queue_t _queue;
+  uint32_t _queue_id{0}; /** Unique counter for each spawned queue by this thread context */
 };
 
 /**
@@ -1186,19 +1607,11 @@ private:
  * function, e.g., log<>, could lead to multiple ThreadContext instances being
  * created for the same thread.
  */
-template <typename TQueue>
-ThreadContext<TQueue>& get_thread_context() noexcept
+template <typename TConfig>
+ThreadContext<TConfig>& get_thread_context(TConfig const& config) noexcept
 {
-  thread_local ThreadContext<TQueue> thread_context;
+  thread_local ThreadContext<TConfig> thread_context{config};
   return thread_context;
-}
-
-[[nodiscard]] std::error_code init() noexcept
-{
-  // TODO:: Initialise the config and write the metadata file to shm
-  // TODO:: std::call_once
-
-  return std::error_code{};
 }
 
 /**
@@ -1290,7 +1703,7 @@ constexpr uint32_t calculate_args_size_and_populate_string_lengths(uint32_t* c_s
  * @param c_style_string_lengths_index Index of the current string/array length in c_style_string_lengths.
  * @param arg The argument to be encoded.
  */
-template <typename T>
+template <bool CustomMemcpy, typename T>
 void encode_arg(uint8_t*& buffer, uint32_t const* c_style_string_lengths,
                 uint32_t& c_style_string_lengths_index, T const& arg) noexcept
 {
@@ -1298,27 +1711,64 @@ void encode_arg(uint8_t*& buffer, uint32_t const* c_style_string_lengths,
   {
     // To support non-zero terminated arrays, copy the length first and then the actual string
     uint32_t const len = c_style_string_lengths[c_style_string_lengths_index++];
-    std::memcpy(buffer, &len, sizeof(uint32_t));
-    std::memcpy(buffer + sizeof(uint32_t), arg, len);
+
+    if (CustomMemcpy)
+    {
+      rte::rte_memcpy(buffer, &len, sizeof(uint32_t));
+      rte::rte_memcpy(buffer + sizeof(uint32_t), arg, len);
+    }
+    else
+    {
+      std::memcpy(buffer, &len, sizeof(uint32_t));
+      std::memcpy(buffer + sizeof(uint32_t), arg, len);
+    }
+
     buffer += sizeof(uint32_t) + len;
   }
   else if constexpr (is_c_style_string_type<T>())
   {
     uint32_t const len = c_style_string_lengths[c_style_string_lengths_index++];
-    std::memcpy(buffer, arg, len);
+
+    if (CustomMemcpy)
+    {
+      rte::rte_memcpy(buffer, arg, len);
+    }
+    else
+    {
+      std::memcpy(buffer, arg, len);
+    }
+
     buffer += len;
   }
   else if constexpr (is_std_string_type<T>())
   {
     // Copy the length first and then the actual string
     auto const len = static_cast<uint32_t>(arg.length());
-    std::memcpy(buffer, &len, sizeof(uint32_t));
-    std::memcpy(buffer + sizeof(uint32_t), arg.data(), len);
+
+    if (CustomMemcpy)
+    {
+      rte::rte_memcpy(buffer, &len, sizeof(uint32_t));
+      rte::rte_memcpy(buffer + sizeof(uint32_t), arg.data(), len);
+    }
+    else
+    {
+      std::memcpy(buffer, &len, sizeof(uint32_t));
+      std::memcpy(buffer + sizeof(uint32_t), arg.data(), len);
+    }
+
     buffer += sizeof(uint32_t) + len;
   }
   else
   {
-    std::memcpy(buffer, &arg, sizeof(arg));
+    if (CustomMemcpy)
+    {
+      rte::rte_memcpy(buffer, &arg, sizeof(arg));
+    }
+    else
+    {
+      std::memcpy(buffer, &arg, sizeof(arg));
+    }
+
     buffer += sizeof(arg);
   }
 }
@@ -1329,18 +1779,17 @@ void encode_arg(uint8_t*& buffer, uint32_t const* c_style_string_lengths,
  * @param c_style_string_lengths Array storing the c_style_string_lengths of C-style strings and char arrays.
  * @param args The arguments to be encoded.
  */
-template <typename... Args>
+template <bool CustomMemcpy, typename... Args>
 void encode(uint8_t*& buffer, uint32_t const* c_style_string_lengths, Args const&... args) noexcept
 {
   uint32_t c_style_string_lengths_index{0};
-  (encode_arg(buffer, c_style_string_lengths, c_style_string_lengths_index, args), ...);
+  (encode_arg<CustomMemcpy>(buffer, c_style_string_lengths, c_style_string_lengths_index, args), ...);
 }
 
-class LoggerBase
+class LoggerBase : public UniqueId<LoggerBase>
 {
 public:
-  LoggerBase(std::string name, LogLevel log_level = LogLevel::Info)
-    : _name(std::move(name)), _log_level(log_level){};
+  explicit LoggerBase(std::string name) : _name(std::move(name)){};
 
   /**
    * @return The log level of the logger
@@ -1349,6 +1798,11 @@ public:
   {
     return _log_level.load(std::memory_order_relaxed);
   }
+
+  /**
+   * @return The name of the logger
+   */
+  [[nodiscard]] std::string const& name() const noexcept { return _name; }
 
   /**
    * Set the log level of the logger
@@ -1368,15 +1822,87 @@ public:
 
 private:
   std::string _name;
-  std::atomic<LogLevel> _log_level;
+  std::atomic<LogLevel> _log_level{LogLevel::Info};
 };
 
-template <typename TQueue>
+template <typename TQueue, bool CustomMemcpyX86>
+class LogClientConfig
+{
+public:
+  explicit LogClientConfig(std::string application_id,
+                           std::filesystem::path shm_root_dir = std::filesystem::path{})
+    : _application_id(std::move(application_id)), _root_dir(std::move(shm_root_dir))
+  {
+    // resolve shared memory directories
+    if (_root_dir.empty())
+    {
+      if (std::filesystem::exists("/dev/shm"))
+      {
+        _root_dir = "/dev/shm";
+      }
+      else if (std::filesystem::exists("/tmp"))
+      {
+        _root_dir = "/tmp";
+      }
+    }
+
+    _app_dir = _root_dir / _application_id;
+
+    std::error_code ec{};
+
+    if (!std::filesystem::exists(_app_dir))
+    {
+      std::filesystem::create_directories(_app_dir, ec);
+
+      if (ec)
+      {
+        std::abort();
+      }
+    }
+
+    uint64_t const start_ts = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                std::chrono::system_clock::now().time_since_epoch())
+                                .count();
+
+    _instance_dir = _app_dir / std::to_string(start_ts);
+
+    if (std::filesystem::exists(_instance_dir))
+    {
+      std::abort();
+    }
+
+    std::filesystem::create_directories(_instance_dir, ec);
+
+    if (ec)
+    {
+      std::abort();
+    }
+  }
+
+  using queue_t = TQueue;
+  static constexpr bool use_custom_memcpy_x86 = CustomMemcpyX86;
+
+  [[nodiscard]] std::filesystem::path const& root_dir() const noexcept { return _root_dir; }
+  [[nodiscard]] std::filesystem::path const& app_dir() const noexcept { return _app_dir; }
+  [[nodiscard]] std::filesystem::path const& instance_dir() const noexcept { return _instance_dir; }
+
+private:
+  std::string _application_id;
+  std::filesystem::path _root_dir;
+  std::filesystem::path _app_dir;
+  std::filesystem::path _instance_dir;
+};
+
+// Forward declaration
+template <typename TConfig>
+class Bitlog;
+
+template <typename TConfig>
 class Logger : public LoggerBase
 {
 public:
-  using LoggerBase::LoggerBase;
-  using queue_t = TQueue;
+  using config_t = TConfig;
+  using queue_t = typename config_t::queue_t;
 
   template <StringLiteral File, StringLiteral Function, uint32_t Line, LogLevel Level, StringLiteral LogFormat, typename... Args>
   void log(Args const&... args)
@@ -1387,28 +1913,253 @@ public:
     uint32_t const args_size = static_cast<uint32_t>(sizeof(uint64_t) + sizeof(uint32_t)) +
       calculate_args_size_and_populate_string_lengths(c_style_string_lengths, args...);
 
-    auto& thread_context = get_thread_context<queue_t>();
+    auto& thread_context = get_thread_context<config_t>(_config);
     uint8_t* write_buffer = thread_context.get_queue().prepare_write(args_size);
 
     if (write_buffer)
     {
-      uint64_t const now = std::chrono::system_clock::now().time_since_epoch().count();
-      std::memcpy(write_buffer, &now, sizeof(uint64_t));
-      write_buffer += sizeof(uint64_t);
+      uint64_t const timestamp = std::chrono::system_clock::now().time_since_epoch().count();
 
-      std::memcpy(write_buffer,
-                  &marco_metadata_node<File, Function, Line, Level, LogFormat, Args...>.id, sizeof(uint32_t));
-      write_buffer += sizeof(uint32_t);
-
-      encode(write_buffer, c_style_string_lengths, args...);
+      encode<TConfig::use_custom_memcpy_x86>(
+        write_buffer, c_style_string_lengths, timestamp,
+        marco_metadata_node<File, Function, Line, Level, LogFormat, Args...>.id, args...);
 
       thread_context.get_queue().finish_write(args_size);
-      thread_context.get_queue().commit();
+      thread_context.get_queue().commit_write();
     }
     else
     {
       // Queue is full TODO
     }
   }
+
+private:
+  friend class Bitlog<TConfig>;
+
+  // Private ctor
+  Logger(std::string name, TConfig const& config) : LoggerBase(std::move(name)), _config(config) {}
+
+  config_t const& _config;
+};
+
+class YAMLWriter
+{
+public:
+  explicit YAMLWriter(std::filesystem::path const path)
+  {
+    _file_fd = ::open(path.c_str(), O_CREAT | O_RDWR | O_EXCL, 0660);
+
+    if (_file_fd < 0)
+    {
+      std::abort();
+    }
+  }
+
+  ~YAMLWriter()
+  {
+    if (_file_fd >= 0)
+    {
+      ::close(_file_fd);
+    }
+  }
+
+  [[nodiscard]] std::error_code lock_file()
+  {
+    std::error_code ec{};
+
+    if (::flock(_file_fd, LOCK_EX | LOCK_NB) == -1)
+    {
+      ec = std::error_code{errno, std::generic_category()};
+    }
+
+    return ec;
+  }
+
+  [[nodiscard]] std::error_code unlock_file()
+  {
+    std::error_code ec{};
+
+    if (::flock(_file_fd, LOCK_UN | LOCK_NB) == -1)
+    {
+      ec = std::error_code{errno, std::generic_category()};
+    }
+
+    return ec;
+  }
+
+  [[nodiscard]] std::error_code write(MacroMetadataNode const& macro_metadata_node)
+  {
+    std::string type_descriptors_str;
+    for (size_t i = 0; i < macro_metadata_node.macro_metadata.type_descriptors.size(); ++i)
+    {
+      type_descriptors_str +=
+        std::to_string(static_cast<uint32_t>(macro_metadata_node.macro_metadata.type_descriptors[i]));
+
+      if (i != macro_metadata_node.macro_metadata.type_descriptors.size() - 1)
+      {
+        type_descriptors_str += " ";
+      }
+    }
+
+    std::string const result = std::format(
+      "- id: {}\n  file: {}\n  line: {}\n  function: {}\n  log_format: {}\n  type_descriptors: "
+      "{}\n  log_level: {}\n",
+      macro_metadata_node.id, macro_metadata_node.macro_metadata.file,
+      macro_metadata_node.macro_metadata.line, macro_metadata_node.macro_metadata.function,
+      macro_metadata_node.macro_metadata.log_format, type_descriptors_str,
+      static_cast<uint32_t>(macro_metadata_node.macro_metadata.level));
+
+    return write(result.data(), result.size());
+  }
+
+private:
+  std::error_code write(void const* buffer, size_t count)
+  {
+    std::error_code ec{};
+    size_t total = 0;
+
+    while (total < count)
+    {
+      ssize_t written = ::write(_file_fd, static_cast<uint8_t const*>(buffer) + total, count - total);
+
+      if (written == -1)
+      {
+        if (errno == EINTR)
+        {
+          // Write was interrupted, retry
+          continue;
+        }
+        ec = std::error_code{errno, std::generic_category()};
+      }
+      total += written;
+    }
+
+    return ec;
+  }
+
+private:
+  int _file_fd{-1};
+};
+
+/**
+ * Inits bitlog and also makes sure init runs once even when a different type of template
+ * parameter is passed to Bitlog singleton
+ * @return true if init run, false otherwise
+ */
+[[nodiscard]] bool bitlog_init()
+{
+  static std::once_flag once_flag;
+
+  bool init_called{false};
+
+  std::call_once(once_flag, [&init_called]() mutable { init_called = true; });
+
+  return init_called;
+}
+
+template <typename TConfig>
+class Bitlog
+{
+public:
+  static void init(TConfig const& config) noexcept
+  {
+    if (bitlog_init())
+    {
+      // Set up the singleton ...
+      _instance.reset(new Bitlog<TConfig>{config});
+
+      // Then we proceed to write the log metadata file
+      YAMLWriter metadata_writer{config.instance_dir() / std::string{"log-metadata"}};
+      auto ec = metadata_writer.lock_file();
+
+      if (ec)
+      {
+        std::abort();
+      }
+
+      bitlog::MacroMetadataNode const* cur = bitlog::macro_metadata_head();
+      while (cur)
+      {
+        ec = metadata_writer.write(*cur);
+        if (ec)
+        {
+          std::abort();
+        }
+        cur = cur->next;
+      }
+
+      ec = metadata_writer.unlock_file();
+
+      if (ec)
+      {
+        std::abort();
+      }
+    }
+  }
+
+  static Bitlog<TConfig>& instance() noexcept
+  {
+    if (!_instance) [[unlikely]]
+    {
+      std::abort();
+    }
+
+    return *_instance;
+  }
+
+  TConfig const& config() const noexcept { return _config; }
+
+  Logger<TConfig>* create_logger(std::string const& logger_name)
+  {
+    // TODO::
+    // Construct Logger and also Sink
+    // stdout sink, stderr sink, file sink, rotating file sink
+
+    // Need to pass logger name, sink, formatter pattern
+
+    std::lock_guard lock{_lock};
+
+    auto search_it = std::lower_bound(std::begin(_loggers), std::end(_loggers), logger_name,
+                                      [](std::unique_ptr<Logger<TConfig>> const& elem, std::string const& name)
+                                      { return elem->name() < name; });
+
+    // Check if the element with the same name already exists
+    if (search_it == std::end(_loggers) || (*search_it)->name() != logger_name)
+    {
+      // Insert the new element while maintaining sorted order
+      search_it = _loggers.emplace(search_it, new Logger<TConfig>(logger_name, _config));
+
+      // TODO:: We need to append the logger to the loggers file
+      // I think it makes sense to append to the file in the loggers constructor but we also
+      // need to check for errors writing to the file
+
+      // if (success_writing_to_file)
+      //   return it->second
+      // else
+      //   erase the added logger
+    }
+
+    return search_it->get();
+  }
+
+  Logger<TConfig>* get_logger(std::string const& name) const
+  {
+    std::lock_guard lock{_lock};
+
+    auto search_it = std::lower_bound(std::begin(_loggers), std::end(_loggers), name,
+                                      [](std::unique_ptr<Logger<TConfig>> const& elem, std::string const& name)
+                                      { return elem->name() < name; });
+
+    return (search_it != std::end(_loggers) && (*search_it)->name() == name) ? search_it->get() : nullptr;
+  }
+
+private:
+  explicit Bitlog(TConfig const& config) : _config(config){};
+
+  static inline std::unique_ptr<Bitlog<TConfig>> _instance;
+
+  mutable std::mutex _lock;
+  TConfig _config;
+  std::vector<std::unique_ptr<Logger<TConfig>>> _loggers;
 };
 } // namespace bitlog

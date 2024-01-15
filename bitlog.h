@@ -4,11 +4,11 @@ import bitlog;
 
 #define LOG_CONDITIONAL(logger, level, likelihood, log_format, ...)                                        \
   do                                                                                                       \
-  {                                                                                                        \
-    if (logger.should_log(level))                                                                          \
+  {                                                                                                         \
+    if (logger->should_log(level))                                                                          \
       likelihood                                                                                           \
-      {                                                                                                    \
-        logger.template log<__FILE_NAME__, __PRETTY_FUNCTION__, __LINE__, level, log_format>(__VA_ARGS__); \
+      {                                                                                                     \
+        logger->template log<__FILE_NAME__, __PRETTY_FUNCTION__, __LINE__, level, log_format>(__VA_ARGS__); \
       }                                                                                                    \
   } while (0)
 

@@ -57,7 +57,11 @@ int main()
   // Start of logging
   std::cout << std::endl;
 
-  bitlog::Logger<bitlog::BoundedQueue> logger{"testing"};
+  using log_client_config_t = bitlog::LogClientConfig<bitlog::BoundedQueue, true>;
+  using bitlog_t = bitlog::Bitlog<log_client_config_t>;
+  bitlog_t::init(log_client_config_t{"mytestapp"});
+  bitlog_t::instance().create_logger("testing");
+  auto logger = bitlog_t::instance().get_logger("testing");
 
   LOG_INFO(logger, "hello world {}", 12u);
   LOG_INFO(logger, "hello doubles {}", 123.3);
@@ -67,5 +71,6 @@ int main()
     LOG_INFO(logger, "hello char loop {}", char(i));
   }
 
+  std::cout << "logger id " << logger->id << std::endl;
   return 0;
 }
