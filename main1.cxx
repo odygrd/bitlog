@@ -63,6 +63,9 @@ int main()
   bitlog_t::instance().create_logger("testing");
   auto logger = bitlog_t::instance().get_logger("testing");
 
+  bitlog_t::instance().create_logger("testing_test");
+  bitlog_t::instance().create_logger("testing_log");
+
   LOG_INFO(logger, "hello world {}", 12u);
   LOG_INFO(logger, "hello doubles {}", 123.3);
 

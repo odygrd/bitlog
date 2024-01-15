@@ -1987,15 +1987,15 @@ public:
     return ec;
   }
 
-  [[nodiscard]] std::error_code write(MacroMetadataNode const& macro_metadata_node)
+  [[nodiscard]] std::error_code write(MacroMetadataNode const* macro_metadata_node)
   {
     std::string type_descriptors_str;
-    for (size_t i = 0; i < macro_metadata_node.macro_metadata.type_descriptors.size(); ++i)
+    for (size_t i = 0; i < macro_metadata_node->macro_metadata.type_descriptors.size(); ++i)
     {
       type_descriptors_str +=
-        std::to_string(static_cast<uint32_t>(macro_metadata_node.macro_metadata.type_descriptors[i]));
+        std::to_string(static_cast<uint32_t>(macro_metadata_node->macro_metadata.type_descriptors[i]));
 
-      if (i != macro_metadata_node.macro_metadata.type_descriptors.size() - 1)
+      if (i != macro_metadata_node->macro_metadata.type_descriptors.size() - 1)
       {
         type_descriptors_str += " ";
       }
@@ -2004,10 +2004,17 @@ public:
     std::string const result = std::format(
       "- id: {}\n  file: {}\n  line: {}\n  function: {}\n  log_format: {}\n  type_descriptors: "
       "{}\n  log_level: {}\n",
-      macro_metadata_node.id, macro_metadata_node.macro_metadata.file,
-      macro_metadata_node.macro_metadata.line, macro_metadata_node.macro_metadata.function,
-      macro_metadata_node.macro_metadata.log_format, type_descriptors_str,
-      static_cast<uint32_t>(macro_metadata_node.macro_metadata.level));
+      macro_metadata_node->id, macro_metadata_node->macro_metadata.file,
+      macro_metadata_node->macro_metadata.line, macro_metadata_node->macro_metadata.function,
+      macro_metadata_node->macro_metadata.log_format, type_descriptors_str,
+      static_cast<uint32_t>(macro_metadata_node->macro_metadata.level));
+
+    return write(result.data(), result.size());
+  }
+
+  [[nodiscard]] std::error_code write(LoggerBase const* logger)
+  {
+    std::string const result = std::format("- id: {}\n  name: {}\n", logger->id, logger->name());
 
     return write(result.data(), result.size());
   }
@@ -2069,7 +2076,7 @@ public:
       _instance.reset(new Bitlog<TConfig>{config});
 
       // Then we proceed to write the log metadata file
-      YAMLWriter metadata_writer{config.instance_dir() / std::string{"log-metadata"}};
+      YAMLWriter metadata_writer{_instance->_config.instance_dir() / std::string{"log-statements-metadata.yaml"}};
       auto ec = metadata_writer.lock_file();
 
       if (ec)
@@ -2077,15 +2084,26 @@ public:
         std::abort();
       }
 
+      // Store them in a vector to write them in reverse. It doesn't make difference just makes
+      // the metadata file look consistent with the logger-metadata
+      std::vector<bitlog::MacroMetadataNode const*> metadata_list;
+      metadata_list.reserve(128);
+
       bitlog::MacroMetadataNode const* cur = bitlog::macro_metadata_head();
       while (cur)
       {
-        ec = metadata_writer.write(*cur);
+        metadata_list.push_back(cur);
+        cur = cur->next;
+      }
+
+      for (auto it = metadata_list.rbegin(); it != metadata_list.rend(); ++it)
+      {
+        ec = metadata_writer.write(*it);
+
         if (ec)
         {
           std::abort();
         }
-        cur = cur->next;
       }
 
       ec = metadata_writer.unlock_file();
@@ -2094,6 +2112,10 @@ public:
       {
         std::abort();
       }
+
+      // Create another file for the logger-metadata
+      _instance->_logger_metadata_writer =
+        std::make_unique<YAMLWriter>(config.instance_dir() / std::string{"loggers-metadata.yaml"});
     }
   }
 
@@ -2129,14 +2151,27 @@ public:
       // Insert the new element while maintaining sorted order
       search_it = _loggers.emplace(search_it, new Logger<TConfig>(logger_name, _config));
 
-      // TODO:: We need to append the logger to the loggers file
-      // I think it makes sense to append to the file in the loggers constructor but we also
-      // need to check for errors writing to the file
+      auto ec = _logger_metadata_writer->lock_file();
 
-      // if (success_writing_to_file)
-      //   return it->second
-      // else
-      //   erase the added logger
+      if (ec)
+      {
+        // TODO:: maybe return nullptr or keep trying to lock here
+        std::abort();
+      }
+
+      ec = _logger_metadata_writer->write(search_it->get());
+
+      if (ec)
+      {
+        std::abort();
+      }
+
+      ec = _logger_metadata_writer->unlock_file();
+
+      if (ec)
+      {
+        std::abort();
+      }
     }
 
     return search_it->get();
@@ -2161,5 +2196,6 @@ private:
   mutable std::mutex _lock;
   TConfig _config;
   std::vector<std::unique_ptr<Logger<TConfig>>> _loggers;
+  std::unique_ptr<YAMLWriter> _logger_metadata_writer;
 };
 } // namespace bitlog
