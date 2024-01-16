@@ -899,13 +899,12 @@ public:
   /**
    * @brief Opens existing shared memory storage and metadata files associated with a specified postfix ID.
    *
-   * @param unique_id The unique ID used to identify the storage and metadata files.
    * @param path_base The path within shared memory.
    * @param page_size The size of memory pages (default is RegularPage).
    *
    * @return An std::error_code indicating the success or failure of the initialization.
    */
-  [[nodiscard]] std::error_code open(std::string const& unique_id, std::filesystem::path path_base,
+  [[nodiscard]] std::error_code open(std::filesystem::path path_base,
                                      MemoryPageSize page_size = MemoryPageSize::RegularPage) noexcept
   {
     std::error_code ec{};
@@ -1577,13 +1576,10 @@ public:
   ThreadContext(ThreadContext const&) = delete;
   ThreadContext& operator=(ThreadContext const&) = delete;
 
-  ThreadContext(TConfig const& config) : _config(config)
+  explicit ThreadContext(TConfig const& config) : _config(config)
   {
-    // TODO:: capacity and application_instance_id, also need to mkdir application_instance_id
-    // TODO:: std::error_code res = _queue.create(4096, "application_instance_id");
-
     std::string const queue_file_base = std::format("{}.{}.ext", this->id, _queue_id++);
-    std::error_code res = _queue.create(4096, _config.instance_dir() / queue_file_base);
+    std::error_code res = _queue.create(_config.queue_capacity(), _config.instance_dir() / queue_file_base);
 
     if (res)
     {
@@ -1882,15 +1878,19 @@ public:
   using queue_t = TQueue;
   static constexpr bool use_custom_memcpy_x86 = CustomMemcpyX86;
 
+  void set_queue_capacity(uint64_t queue_capacity) noexcept { _queue_capacity = queue_capacity; }
+
   [[nodiscard]] std::filesystem::path const& root_dir() const noexcept { return _root_dir; }
   [[nodiscard]] std::filesystem::path const& app_dir() const noexcept { return _app_dir; }
   [[nodiscard]] std::filesystem::path const& instance_dir() const noexcept { return _instance_dir; }
+  [[nodiscard]] uint64_t queue_capacity() const noexcept { return _queue_capacity; }
 
 private:
   std::string _application_id;
   std::filesystem::path _root_dir;
   std::filesystem::path _app_dir;
   std::filesystem::path _instance_dir;
+  uint64_t _queue_capacity{131'072u};
 };
 
 // Forward declaration
@@ -1910,7 +1910,7 @@ public:
     uint32_t c_style_string_lengths[(std::max)(count_c_style_strings<Args...>(), static_cast<uint32_t>(1))];
 
     // Also reserve space for the timestamp and the metadata id
-    uint32_t const args_size = static_cast<uint32_t>(sizeof(uint64_t) + sizeof(uint32_t)) +
+    uint32_t const args_size = static_cast<uint32_t>(sizeof(uint64_t) + sizeof(uint32_t) + sizeof(uint32_t)) +
       calculate_args_size_and_populate_string_lengths(c_style_string_lengths, args...);
 
     auto& thread_context = get_thread_context<config_t>(_config);
@@ -1918,11 +1918,12 @@ public:
 
     if (write_buffer)
     {
+      // TODO:: timestamp types rdtsc
       uint64_t const timestamp = std::chrono::system_clock::now().time_since_epoch().count();
 
       encode<TConfig::use_custom_memcpy_x86>(
         write_buffer, c_style_string_lengths, timestamp,
-        marco_metadata_node<File, Function, Line, Level, LogFormat, Args...>.id, args...);
+        marco_metadata_node<File, Function, Line, Level, LogFormat, Args...>.id, this->id, args...);
 
       thread_context.get_queue().finish_write(args_size);
       thread_context.get_queue().commit_write();
@@ -1945,7 +1946,7 @@ private:
 class YAMLWriter
 {
 public:
-  explicit YAMLWriter(std::filesystem::path const path)
+  explicit YAMLWriter(std::filesystem::path const& path)
   {
     _file_fd = ::open(path.c_str(), O_CREAT | O_RDWR | O_EXCL, 0660);
 
@@ -1963,7 +1964,7 @@ public:
     }
   }
 
-  [[nodiscard]] std::error_code lock_file()
+  [[nodiscard]] std::error_code lock_file() noexcept
   {
     std::error_code ec{};
 
@@ -1975,7 +1976,7 @@ public:
     return ec;
   }
 
-  [[nodiscard]] std::error_code unlock_file()
+  [[nodiscard]] std::error_code unlock_file() noexcept
   {
     std::error_code ec{};
 
@@ -2068,12 +2069,12 @@ template <typename TConfig>
 class Bitlog
 {
 public:
-  static void init(TConfig const& config) noexcept
+  static void init(TConfig config) noexcept
   {
     if (bitlog_init())
     {
       // Set up the singleton ...
-      _instance.reset(new Bitlog<TConfig>{config});
+      _instance.reset(new Bitlog<TConfig>{std::move(config)});
 
       // Then we proceed to write the log metadata file
       YAMLWriter metadata_writer{_instance->_config.instance_dir() / std::string{"log-statements-metadata.yaml"}};
@@ -2114,8 +2115,8 @@ public:
       }
 
       // Create another file for the logger-metadata
-      _instance->_logger_metadata_writer =
-        std::make_unique<YAMLWriter>(config.instance_dir() / std::string{"loggers-metadata.yaml"});
+      _instance->_logger_metadata_writer = std::make_unique<YAMLWriter>(
+        _instance->_config.instance_dir() / std::string{"loggers-metadata.yaml"});
     }
   }
 
@@ -2133,11 +2134,7 @@ public:
 
   Logger<TConfig>* create_logger(std::string const& logger_name)
   {
-    // TODO::
-    // Construct Logger and also Sink
-    // stdout sink, stderr sink, file sink, rotating file sink
-
-    // Need to pass logger name, sink, formatter pattern
+    // TODO:: Need to pass logger name, sink, formatter pattern
 
     std::lock_guard lock{_lock};
 
@@ -2151,13 +2148,13 @@ public:
       // Insert the new element while maintaining sorted order
       search_it = _loggers.emplace(search_it, new Logger<TConfig>(logger_name, _config));
 
-      auto ec = _logger_metadata_writer->lock_file();
+      std::error_code ec;
 
-      if (ec)
+      do
       {
-        // TODO:: maybe return nullptr or keep trying to lock here
-        std::abort();
-      }
+        // keep trying to lock the file
+        ec = _logger_metadata_writer->lock_file();
+      } while (ec);
 
       ec = _logger_metadata_writer->write(search_it->get());
 
@@ -2197,5 +2194,34 @@ private:
   TConfig _config;
   std::vector<std::unique_ptr<Logger<TConfig>>> _loggers;
   std::unique_ptr<YAMLWriter> _logger_metadata_writer;
+};
+
+class LoggingService
+{
+public:
+  LoggingService() = default;
+
+  void set_app_dir(std::filesystem::path const& app_dir) noexcept { _app_dir = app_dir; }
+
+  void poll()
+  {
+    std::error_code ec{};
+
+    auto di = std::filesystem::directory_iterator(_app_dir, ec);
+
+    if (!ec)
+    {
+      for (auto const& entry : di)
+      {
+        if (entry.is_directory())
+        {
+          std::cout << entry.path().c_str() << std::endl;
+        }
+      }
+    }
+  }
+
+private:
+  std::filesystem::path _app_dir;
 };
 } // namespace bitlog

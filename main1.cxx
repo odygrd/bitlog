@@ -75,5 +75,19 @@ int main()
   }
 
   std::cout << "logger id " << logger->id << std::endl;
+
+  std::thread logserv{[]()
+                      {
+                        bitlog::LoggingService ls;
+                        ls.set_app_dir("/dev/shm/mytestapp");
+
+                        while (true)
+                        {
+                          ls.poll();
+                          std::this_thread::sleep_for(std::chrono::seconds{5});
+                        }
+                      }};
+
+  logserv.join();
   return 0;
 }
