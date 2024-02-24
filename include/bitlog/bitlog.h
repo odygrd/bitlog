@@ -1,15 +1,15 @@
 #pragma once
 
-import bitlog;
+#include "bitlog-inl.h"
 
-#define LOG_CONDITIONAL(logger, level, likelihood, log_format, ...)                                        \
-  do                                                                                                       \
-  {                                                                                                         \
-    if (logger->should_log(level))                                                                          \
-      likelihood                                                                                           \
-      {                                                                                                     \
-        logger->template log<__FILE_NAME__, __PRETTY_FUNCTION__, __LINE__, level, log_format>(__VA_ARGS__); \
-      }                                                                                                    \
+#define LOG_CONDITIONAL(logger, level, likelihood, log_format, ...)                                  \
+  do                                                                                                 \
+  {                                                                                                  \
+    if (logger->should_log(level))                                                                   \
+      likelihood                                                                                     \
+      {                                                                                              \
+        logger->template log<__FILE_NAME__, __FUNCTION__, __LINE__, level, log_format>(__VA_ARGS__); \
+      }                                                                                              \
   } while (0)
 
 #define LOG_TRACE_L3(logger, log_format, ...)                                                      \
