@@ -1,5 +1,7 @@
 #pragma once
 
+#include "bitlog/detail/common.h"
+
 #include <atomic>
 #include <cstring>
 #include <filesystem>
@@ -9,8 +11,6 @@
 #include <linux/mman.h>
 #include <sys/file.h>
 #include <sys/mman.h>
-
-#include "bitlog/detail/common.h"
 
 #if defined(BITLOG_X86_ARCHITECTURE_ENABLED)
   #include <immintrin.h>

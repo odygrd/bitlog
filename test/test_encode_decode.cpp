@@ -3,13 +3,15 @@
 #include <string>
 
 #include "bitlog/detail/encode.h"
+#include "bitlog/detail/decode.h"
+#include "bitlog/bundled/fmt/format.h"
 
-TEST_SUITE_BEGIN("Encode");
+TEST_SUITE_BEGIN("EncodeDecode");
 
 TEST_CASE("get_type_descriptor")
 {
   // Fundamental Types
-  REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<char>::value, bitlog::detail::TypeDescriptorName::SignedChar);
+  REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<char>::value, bitlog::detail::TypeDescriptorName::Char);
   REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<unsigned char>::value,
              bitlog::detail::TypeDescriptorName::UnsignedChar);
   REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<short int>::value, bitlog::detail::TypeDescriptorName::ShortInt);
@@ -42,8 +44,8 @@ TEST_CASE("get_type_descriptor")
              bitlog::detail::TypeDescriptorName::CStringArray);
 
   // References
-  REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<char&>::value, bitlog::detail::TypeDescriptorName::SignedChar);
-  REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<char const&>::value, bitlog::detail::TypeDescriptorName::SignedChar);
+  REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<char&>::value, bitlog::detail::TypeDescriptorName::Char);
+  REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<char const&>::value, bitlog::detail::TypeDescriptorName::Char);
   REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<char*&>::value, bitlog::detail::TypeDescriptorName::CString);
   REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<char const*&>::value, bitlog::detail::TypeDescriptorName::CString);
   REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<char const* const&>::value,
@@ -219,7 +221,7 @@ TEST_CASE("calculate_args_size_and_populate_string_lengths_2")
 
 TEST_CASE("encode_1")
 {
-  uint8_t buffer[256]; // Adjust the buffer size based on the expected encoded size
+  uint8_t buffer[256];
 
   // Test case with different argument types
   char s1[] = "mutable_array";
@@ -240,7 +242,6 @@ TEST_CASE("encode_1")
   bitlog::detail::encode<false>(buffer_ptr, c_style_string_lengths, s1, s2, ref, s3, (int)42,
                                 "literal", (double)3.14, std::string("std_string"));
 
-  // You need to manually calculate the expected encoded size based on your test case
   REQUIRE_EQ(buffer_ptr - buffer, total_size);
 
   // Decode the values and check if they match the original values
@@ -321,6 +322,79 @@ TEST_CASE("encode_1")
   REQUIRE_EQ(std::strcmp(literal_decoded, "literal"), 0);
   REQUIRE_EQ(double_decoded, 3.14);
   REQUIRE_EQ(std::strcmp(string_decoded, "std_string"), 0);
+}
+
+TEST_CASE("encode_decode")
+{
+  uint8_t buffer[256];
+
+  signed char s1 = 'a';
+  unsigned char s2 = 'A';
+  short int s3 = -12;
+  unsigned short int s4 = 24;
+  int s5 = -1337;
+  unsigned int s6 = 256;
+  long int s7 = -90000;
+  unsigned long int s8 = 100000;
+  long long int s9 = -210000;
+  unsigned long long int s10 = 410000;
+  float s11 = 3.14;
+  double s12 = 72.123;
+  char s13[] = "mutable_array";
+  const char* s14 = "const_char_pointer";
+  std::string s15 {"std_string"};
+  char s16 = 'B';
+
+  uint32_t c_style_string_lengths[2];
+  uint32_t total_size = bitlog::detail::calculate_args_size_and_populate_string_lengths(
+    c_style_string_lengths, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13, s14, s15, s16);
+
+  REQUIRE_EQ(c_style_string_lengths[0], 13);
+  REQUIRE_EQ(c_style_string_lengths[1], 19);
+
+  REQUIRE_EQ(total_size,
+             sizeof(s1) + sizeof(s2) + sizeof(s3) + sizeof(s4) + sizeof(s5) + sizeof(s6) +
+               sizeof(s7) + sizeof(s8) + sizeof(s9) + sizeof(s10) + sizeof(s11) + sizeof(s12) +
+               sizeof (s13) + sizeof (uint32_t) - 1 + strlen(s14) + 1 + s15.size() + sizeof (uint32_t) + sizeof (s16));
+
+  uint8_t* encode_buffer = buffer;
+  bitlog::detail::encode<false>(encode_buffer, c_style_string_lengths, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13, s14, s15, s16);
+
+  REQUIRE_EQ(encode_buffer - buffer, total_size);
+
+  std::vector<bitlog::detail::TypeDescriptorName> type_descriptors;
+  type_descriptors.emplace_back(bitlog::detail::GetTypeDescriptor<decltype(s1)>::value);
+  type_descriptors.emplace_back(bitlog::detail::GetTypeDescriptor<decltype(s2)>::value);
+  type_descriptors.emplace_back(bitlog::detail::GetTypeDescriptor<decltype(s3)>::value);
+  type_descriptors.emplace_back(bitlog::detail::GetTypeDescriptor<decltype(s4)>::value);
+  type_descriptors.emplace_back(bitlog::detail::GetTypeDescriptor<decltype(s5)>::value);
+  type_descriptors.emplace_back(bitlog::detail::GetTypeDescriptor<decltype(s6)>::value);
+  type_descriptors.emplace_back(bitlog::detail::GetTypeDescriptor<decltype(s7)>::value);
+  type_descriptors.emplace_back(bitlog::detail::GetTypeDescriptor<decltype(s8)>::value);
+  type_descriptors.emplace_back(bitlog::detail::GetTypeDescriptor<decltype(s9)>::value);
+  type_descriptors.emplace_back(bitlog::detail::GetTypeDescriptor<decltype(s10)>::value);
+  type_descriptors.emplace_back(bitlog::detail::GetTypeDescriptor<decltype(s11)>::value);
+  type_descriptors.emplace_back(bitlog::detail::GetTypeDescriptor<decltype(s12)>::value);
+  type_descriptors.emplace_back(bitlog::detail::GetTypeDescriptor<decltype(s13)>::value);
+  type_descriptors.emplace_back(bitlog::detail::GetTypeDescriptor<decltype(s14)>::value);
+  type_descriptors.emplace_back(bitlog::detail::GetTypeDescriptor<decltype(s15)>::value);
+  type_descriptors.emplace_back(bitlog::detail::GetTypeDescriptor<decltype(s16)>::value);
+
+  // Decode
+  uint8_t const* decode_buffer = buffer;
+  std::vector<fmtbitlog::basic_format_arg<fmtbitlog::format_context>> fmt_args;
+  bitlog::detail::decode(decode_buffer, type_descriptors, fmt_args);
+
+  REQUIRE_EQ(fmt_args.size(), 16);
+
+  std::string output_buffer;
+  fmtbitlog::vformat_to(std::back_inserter(output_buffer), "{} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {}",
+                        fmtbitlog::basic_format_args(fmt_args.data(), fmt_args.size()));
+
+  std::string_view const output {output_buffer.data(), output_buffer.size()};
+  std::string_view const expected_output {"97 65 -12 24 -1337 256 -90000 100000 -210000 410000 3.14 72.123 mutable_array const_char_pointer std_string B"};
+
+  REQUIRE_EQ(output, expected_output);
 }
 
 TEST_SUITE_END();

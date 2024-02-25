@@ -7,6 +7,8 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
+#define FMTBITLOG_HEADER_ONLY
+
 #if defined(__x86_64__) || defined(_M_X64)
   #define BITLOG_X86_ARCHITECTURE_ENABLED
 #endif
@@ -114,6 +116,7 @@ struct StringLiteral
 enum class TypeDescriptorName : uint8_t
 {
   None = 0,
+  Char,
   SignedChar,
   UnsignedChar,
   ShortInt,

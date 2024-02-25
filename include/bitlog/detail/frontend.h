@@ -1,5 +1,8 @@
 #pragma once
 
+// Include always common first as it defines FMTBITLOG_HEADER_ONLY
+#include "bitlog/detail/common.h"
+
 #include <span>
 #include <cstdint>
 #include <string_view>
@@ -7,7 +10,6 @@
 #include <utility>
 
 #include "bitlog/bundled/fmt/format.h"
-#include "bitlog/detail/common.h"
 #include "bitlog/detail/encode.h"
 
 namespace bitlog::detail

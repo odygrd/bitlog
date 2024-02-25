@@ -1,12 +1,13 @@
 #pragma once
 
+#include "bitlog/detail/common.h"
+
 #include <cstdint>
 #include <cstring>
 #include <string>
 #include <string_view>
 #include <type_traits>
 
-#include "bitlog/detail/common.h"
 #include "bitlog/detail/rte_memcpy.h"
 
 namespace bitlog::detail
@@ -46,7 +47,8 @@ struct GetTypeDescriptor
     static constexpr TypeDescriptorName value = Descriptor;                                        \
   };
 
-BITLOG_SUPPORTED_TYPE_SPECIALIZATION(char, TypeDescriptorName::SignedChar)
+BITLOG_SUPPORTED_TYPE_SPECIALIZATION(char, TypeDescriptorName::Char)
+BITLOG_SUPPORTED_TYPE_SPECIALIZATION(signed char, TypeDescriptorName::SignedChar)
 BITLOG_SUPPORTED_TYPE_SPECIALIZATION(unsigned char, TypeDescriptorName::UnsignedChar)
 BITLOG_SUPPORTED_TYPE_SPECIALIZATION(short int, TypeDescriptorName::ShortInt)
 BITLOG_SUPPORTED_TYPE_SPECIALIZATION(unsigned short int, TypeDescriptorName::UnsignedShortInt)
