@@ -1,30 +1,25 @@
-#include "doctest.h"
+#include "bundled/doctest.h"
 
-#include <filesystem>
-#include <array>
-#include <system_error>
 #include <thread>
-#include <expected>
 
-import bitlog;
+#include "bitlog/core.h"
+#include "bitlog/detail/bounded_queue.h"
 
-using log_client_config_t = bitlog::LogClientConfig<bitlog::BoundedQueue, true>;
+using log_client_config_t = bitlog::Config<bitlog::detail::BoundedQueue, true>;
 
 TEST_SUITE_BEGIN("BoundedQueue");
 
-template<typename TQueue>
+template <typename TQueue>
 void bounded_queue_read_write_test(std::filesystem::path const& path)
 {
-  std::error_code res;
+  std::error_code ec;
   std::array<uint32_t, 8> values{};
 
   {
     TQueue queue;
 
     uint32_t const queue_capacity = 4096;
-    res = queue.create(queue_capacity, path);
-
-    REQUIRE_EQ(res.value(), 0);
+    REQUIRE(queue.create(queue_capacity, path, bitlog::MemoryPageSize::RegularPage, 5, ec));
 
     for (uint32_t i = 0; i < queue_capacity * 25u; ++i)
     {
@@ -61,12 +56,10 @@ void bounded_queue_read_write_test(std::filesystem::path const& path)
       REQUIRE_FALSE(queue.prepare_read());
     }
 
-    REQUIRE(queue.is_creator_process_running());
     REQUIRE_FALSE(queue.prepare_read());
   }
 
-  res = TQueue::remove_shm_files(path, std::filesystem::path{});
-  REQUIRE_EQ(res.value(), 0);
+  REQUIRE(TQueue::remove_shm_files(path, std::filesystem::path{}, ec));
 
   std::filesystem::remove_all(path.parent_path());
 }
@@ -74,16 +67,17 @@ void bounded_queue_read_write_test(std::filesystem::path const& path)
 TEST_CASE("bounded_queue_read_write_1")
 {
   log_client_config_t log_client_config{"bounded_queue_read_write_test_1"};
-  bounded_queue_read_write_test<bitlog::BoundedQueueImpl<uint16_t, false>>(log_client_config.instance_dir());
+  bounded_queue_read_write_test<bitlog::detail::BoundedQueueImpl<uint16_t, false>>(
+    log_client_config.instance_dir());
 }
 
 TEST_CASE("bounded_queue_read_write_2")
 {
   log_client_config_t log_client_config{"bounded_queue_read_write_test_2"};
-  bounded_queue_read_write_test<bitlog::BoundedQueueImpl<uint16_t, true>>(log_client_config.instance_dir());
+  bounded_queue_read_write_test<bitlog::detail::BoundedQueueImpl<uint16_t, true>>(log_client_config.instance_dir());
 }
 
-template<typename TQueue>
+template <typename TQueue>
 void bounded_queue_read_write_threads(std::filesystem::path const& path)
 {
   std::thread producer_thread(
@@ -91,9 +85,10 @@ void bounded_queue_read_write_threads(std::filesystem::path const& path)
     {
       TQueue queue;
       uint32_t const queue_capacity = 131'072;
-      std::error_code res = queue.create(queue_capacity, path);
+      std::error_code ec;
+      bool res = queue.create(queue_capacity, path, bitlog::MemoryPageSize::RegularPage, 5, ec);
 
-      REQUIRE_EQ(res.value(), 0);
+      REQUIRE(res);
 
       for (uint32_t wrap_cnt = 0; wrap_cnt < 20; ++wrap_cnt)
       {
@@ -119,19 +114,25 @@ void bounded_queue_read_write_threads(std::filesystem::path const& path)
     {
       TQueue queue;
 
+      std::error_code ec;
       // wait until the producer creates the queue
-      std::expected<bool, std::error_code> queue_created = TQueue::is_created(path, std::filesystem::path{});
-      REQUIRE(queue_created.has_value());
-      while (!queue_created.value())
+      bool queue_created = TQueue::is_created(path, std::filesystem::path{}, ec);
+
+      while (!queue_created)
       {
         // keep waiting
         std::this_thread::sleep_for(std::chrono::nanoseconds{100});
-        queue_created = TQueue::is_created(path, std::filesystem::path{});
-        REQUIRE(queue_created.has_value());
+        queue_created = TQueue::is_created(path, std::filesystem::path{}, ec);
       }
 
-      std::error_code res = queue.open(path);
-      REQUIRE_EQ(res.value(), 0);
+      REQUIRE(queue_created);
+
+      bool res = queue.open(path, bitlog::MemoryPageSize::RegularPage, ec);
+      REQUIRE(res);
+
+      res = queue.is_creator_process_running(ec);
+      REQUIRE_FALSE(ec);
+      REQUIRE(queue.is_creator_process_running(ec));
 
       for (uint32_t wrap_cnt = 0; wrap_cnt < 20; ++wrap_cnt)
       {
@@ -154,19 +155,18 @@ void bounded_queue_read_write_threads(std::filesystem::path const& path)
       // We expect the producer to finish here and we will check it
       size_t const retries = 5;
       size_t cnt{0};
-      std::expected<bool, std::error_code> is_producer_running;
+      bool is_producer_running;
       do
       {
-        is_producer_running = queue.is_creator_process_running();
+        is_producer_running = queue.is_creator_process_running(ec);
         ++cnt;
         // while error or producer still running retry
-      } while (!is_producer_running.has_value() || *is_producer_running || (cnt > retries));
+      } while (ec || is_producer_running || (cnt > retries));
 
-      REQUIRE(is_producer_running.has_value());
-      REQUIRE_FALSE(*is_producer_running);
+      REQUIRE_FALSE(is_producer_running);
 
-      res = TQueue::remove_shm_files(path, std::filesystem::path{});
-      REQUIRE_EQ(res.value(), 0);
+      res = TQueue::remove_shm_files(path, std::filesystem::path{}, ec);
+      REQUIRE(res);
 
       std::filesystem::remove_all(path.parent_path());
     });
@@ -178,13 +178,13 @@ void bounded_queue_read_write_threads(std::filesystem::path const& path)
 TEST_CASE("bounded_queue_read_write_threads_1")
 {
   log_client_config_t log_client_config{"bounded_queue_read_write_threads_test_1"};
-  bounded_queue_read_write_threads<bitlog::BoundedQueue>(log_client_config.instance_dir());
+  bounded_queue_read_write_threads<bitlog::detail::BoundedQueue>(log_client_config.instance_dir());
 }
 
 TEST_CASE("bounded_queue_read_write_threads_2")
 {
   log_client_config_t log_client_config{"bounded_queue_read_write_threads_test_2"};
-  bounded_queue_read_write_threads<bitlog::BoundedQueueX86>(log_client_config.instance_dir());
+  bounded_queue_read_write_threads<bitlog::detail::BoundedQueueX86>(log_client_config.instance_dir());
 }
 
 TEST_SUITE_END();

@@ -5,7 +5,7 @@ set(CMAKE_VERBOSE_MAKEFILE ON)
 
 set(CMAKE_CXX_STANDARD 23)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=x86-64 -mavx2 -mavx -msse3 -msse2 -msse")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=x86-64 -mavx2 -mavx -msse3 -msse2 -msse -mclflushopt")
 
 # Create a library
 add_library(bitlog INTERFACE)
