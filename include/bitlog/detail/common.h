@@ -125,6 +125,9 @@ enum class TypeDescriptorName : uint8_t
   LongLongInt,
   UnsignedLongLongInt,
   Float,
-  Double
+  Double,
+  CString,
+  CStringArray,
+  StdString
 };
 } // namespace bitlog::detail

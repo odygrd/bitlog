@@ -20,76 +20,73 @@ struct GetTypeDescriptor
   static_assert(false, "Unsupported type");
 };
 
-template <>
-struct GetTypeDescriptor<char>
+// Specializations for supported types
+#define BITLOG_SUPPORTED_TYPE_SPECIALIZATION(Type, Descriptor)                                     \
+  template <>                                                                                      \
+  struct GetTypeDescriptor<Type>                                                                   \
+  {                                                                                                \
+    static constexpr TypeDescriptorName value = Descriptor;                                        \
+  };                                                                                               \
+                                                                                                   \
+  template <>                                                                                      \
+  struct GetTypeDescriptor<Type const>                                                             \
+  {                                                                                                \
+    static constexpr TypeDescriptorName value = Descriptor;                                        \
+  };                                                                                               \
+                                                                                                   \
+  template <>                                                                                      \
+  struct GetTypeDescriptor<Type&>                                                                  \
+  {                                                                                                \
+    static constexpr TypeDescriptorName value = Descriptor;                                        \
+  };                                                                                               \
+                                                                                                   \
+  template <>                                                                                      \
+  struct GetTypeDescriptor<Type const&>                                                            \
+  {                                                                                                \
+    static constexpr TypeDescriptorName value = Descriptor;                                        \
+  };
+
+BITLOG_SUPPORTED_TYPE_SPECIALIZATION(char, TypeDescriptorName::SignedChar)
+BITLOG_SUPPORTED_TYPE_SPECIALIZATION(unsigned char, TypeDescriptorName::UnsignedChar)
+BITLOG_SUPPORTED_TYPE_SPECIALIZATION(short int, TypeDescriptorName::ShortInt)
+BITLOG_SUPPORTED_TYPE_SPECIALIZATION(unsigned short int, TypeDescriptorName::UnsignedShortInt)
+BITLOG_SUPPORTED_TYPE_SPECIALIZATION(int, TypeDescriptorName::Int)
+BITLOG_SUPPORTED_TYPE_SPECIALIZATION(unsigned int, TypeDescriptorName::UnsignedInt)
+BITLOG_SUPPORTED_TYPE_SPECIALIZATION(long int, TypeDescriptorName::LongInt)
+BITLOG_SUPPORTED_TYPE_SPECIALIZATION(unsigned long int, TypeDescriptorName::UnsignedLongInt)
+BITLOG_SUPPORTED_TYPE_SPECIALIZATION(long long int, TypeDescriptorName::LongLongInt)
+BITLOG_SUPPORTED_TYPE_SPECIALIZATION(unsigned long long int, TypeDescriptorName::UnsignedLongLongInt)
+BITLOG_SUPPORTED_TYPE_SPECIALIZATION(float, TypeDescriptorName::Float)
+BITLOG_SUPPORTED_TYPE_SPECIALIZATION(double, TypeDescriptorName::Double)
+BITLOG_SUPPORTED_TYPE_SPECIALIZATION(char const*, TypeDescriptorName::CString)
+BITLOG_SUPPORTED_TYPE_SPECIALIZATION(char*, TypeDescriptorName::CString)
+BITLOG_SUPPORTED_TYPE_SPECIALIZATION(std::string, TypeDescriptorName::StdString)
+BITLOG_SUPPORTED_TYPE_SPECIALIZATION(std::string_view, TypeDescriptorName::StdString)
+
+#undef BITLOG_SUPPORTED_TYPE_SPECIALIZATION
+
+template <std::size_t N>
+struct GetTypeDescriptor<char[N]>
 {
-  static constexpr TypeDescriptorName value{TypeDescriptorName::SignedChar};
+  static constexpr TypeDescriptorName value = TypeDescriptorName::CStringArray;
 };
 
-template <>
-struct GetTypeDescriptor<unsigned char>
+template <std::size_t N>
+struct GetTypeDescriptor<const char[N]>
 {
-  static constexpr TypeDescriptorName value{TypeDescriptorName::UnsignedChar};
+  static constexpr TypeDescriptorName value = TypeDescriptorName::CStringArray;
 };
 
-template <>
-struct GetTypeDescriptor<short int>
+template <std::size_t N>
+struct GetTypeDescriptor<char const (&)[N]>
 {
-  static constexpr TypeDescriptorName value{TypeDescriptorName::ShortInt};
+  static constexpr TypeDescriptorName value = TypeDescriptorName::CStringArray;
 };
 
-template <>
-struct GetTypeDescriptor<unsigned short int>
+template <std::size_t N>
+struct GetTypeDescriptor<char (&)[N]>
 {
-  static constexpr TypeDescriptorName value{TypeDescriptorName::UnsignedShortInt};
-};
-
-template <>
-struct GetTypeDescriptor<int>
-{
-  static constexpr TypeDescriptorName value{TypeDescriptorName::Int};
-};
-
-template <>
-struct GetTypeDescriptor<unsigned int>
-{
-  static constexpr TypeDescriptorName value{TypeDescriptorName::UnsignedInt};
-};
-
-template <>
-struct GetTypeDescriptor<long int>
-{
-  static constexpr TypeDescriptorName value{TypeDescriptorName::LongInt};
-};
-
-template <>
-struct GetTypeDescriptor<unsigned long int>
-{
-  static constexpr TypeDescriptorName value{TypeDescriptorName::UnsignedLongInt};
-};
-
-template <>
-struct GetTypeDescriptor<long long int>
-{
-  static constexpr TypeDescriptorName value{TypeDescriptorName::LongLongInt};
-};
-
-template <>
-struct GetTypeDescriptor<unsigned long long int>
-{
-  static constexpr TypeDescriptorName value{TypeDescriptorName::UnsignedLongLongInt};
-};
-
-template <>
-struct GetTypeDescriptor<float>
-{
-  static constexpr TypeDescriptorName value{TypeDescriptorName::Float};
-};
-
-template <>
-struct GetTypeDescriptor<double>
-{
-  static constexpr TypeDescriptorName value{TypeDescriptorName::Double};
+  static constexpr TypeDescriptorName value = TypeDescriptorName::CStringArray;
 };
 
 /**
