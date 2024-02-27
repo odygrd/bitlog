@@ -1,9 +1,17 @@
 #pragma once
 
+#include <algorithm>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
-#include <algorithm>
+#include <cstdio>
+#include <filesystem>
+#include <string>
+#include <string_view>
+#include <system_error>
+#include <utility>
 
+#include <sys/file.h>
 #include <sys/syscall.h>
 #include <unistd.h>
 
@@ -51,6 +59,7 @@ namespace bitlog::detail
 /** Constants **/
 static constexpr size_t CACHE_LINE_SIZE_BYTES{64u};
 static constexpr size_t CACHE_LINE_ALIGNED{2 * CACHE_LINE_SIZE_BYTES};
+static constexpr char const* LOG_STATEMENTS_METADATA_FILENAME{"log-statements-metadata.yaml"};
 
 /**
  * Round up a value to the nearest multiple of a specified size.
@@ -132,5 +141,113 @@ enum class TypeDescriptorName : uint8_t
   CString,
   CStringArray,
   StdString
+};
+
+/**
+ * @brief Attempts to lock a file descriptor in an exclusive, non-blocking manner.
+ *
+ * @param fd The file descriptor to lock.
+ * @param ec Reference to a std::error_code object that will be set in case of failure.
+ * @return True if the file was successfully locked, false otherwise.
+ */
+inline bool lock_file(int fd, std::error_code& ec) noexcept
+{
+  if (::flock(fd, LOCK_EX | LOCK_NB) == -1)
+  {
+    ec = std::error_code{errno, std::generic_category()};
+    return false;
+  }
+  return true;
+}
+
+/**
+ * @brief Attempts to unlock a file descriptor in an exclusive, non-blocking manner.
+ *
+ * @param fd The file descriptor unlock lock.
+ * @param ec Reference to a std::error_code object that will be set in case of failure.
+ * @return True if the file was successfully unlocked, false otherwise.
+ */
+inline bool unlock_file(int fd, std::error_code& ec) noexcept
+{
+  if (::flock(fd, LOCK_UN | LOCK_NB) == -1)
+  {
+    ec = std::error_code{errno, std::generic_category()};
+    return false;
+  }
+  return true;
+}
+
+/**
+ * @brief The MetadataFile class provides functionality to read/write data to a file.
+ */
+class MetadataFile
+{
+public:
+  ~MetadataFile()
+  {
+    if (_file)
+    {
+      std::fflush(_file);
+
+      std::error_code ec;
+      unlock_file(fileno(_file), ec);
+
+      std::fclose(_file);
+    }
+  }
+
+  [[nodiscard]] bool init_writer(std::filesystem::path const& path) { return _init(path, "a"); }
+
+  [[nodiscard]] bool init_reader(std::filesystem::path const& path)
+  {
+    _line.resize(2048);
+    return _init(path, "r");
+  }
+
+  [[nodiscard]] bool write(void const* buffer, size_t count, std::error_code& ec)
+  {
+    assert(_file);
+
+    size_t const written = std::fwrite(buffer, sizeof(char), count, _file);
+
+    if (written != count)
+    {
+      ec = std::error_code{errno, std::generic_category()};
+      return false;
+    }
+
+    return true;
+  }
+
+  [[nodiscard]] FILE* get_file_ptr() noexcept { return _file; }
+
+private:
+  [[nodiscard]] bool _init(std::filesystem::path const& path, char const* mode)
+  {
+    _file = std::fopen(path.c_str(), mode);
+
+    if (!_file)
+    {
+      return false;
+    }
+
+    std::error_code ec;
+    bool locked;
+    do
+    {
+      locked = lock_file(fileno(_file), ec);
+    } while (ec.value() == EWOULDBLOCK);
+
+    if (!locked)
+    {
+      return false;
+    }
+
+    return true;
+  }
+
+private:
+  std::string _line;
+  std::FILE* _file{nullptr};
 };
 } // namespace bitlog::detail

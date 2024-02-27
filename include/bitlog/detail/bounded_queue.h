@@ -61,7 +61,8 @@ public:
 
     if (_filelock_fd >= 0)
     {
-      ::flock(_filelock_fd, LOCK_UN | LOCK_NB);
+      std::error_code ec;
+      unlock_file(_filelock_fd, ec);
       ::close(_filelock_fd);
     }
   }
@@ -132,7 +133,7 @@ public:
 
                 if (_filelock_fd >= 0)
                 {
-                  if (::flock(_filelock_fd, LOCK_EX | LOCK_NB) == 0)
+                  if (lock_file(_filelock_fd, ec))
                   {
                     // 4. Create a ready file, indicating everything is ready and initialised and
                     // the reader can start loading the files
@@ -172,7 +173,7 @@ public:
                   }
                   else
                   {
-                    ec = std::error_code{errno, std::generic_category()};
+                    // ec already set by lock_file
                     ret_val = false;
                   }
                 }
@@ -338,18 +339,20 @@ public:
   {
     bool is_running;
 
-    if (::flock(_filelock_fd, LOCK_EX | LOCK_NB) == 0)
+    // need a different ec for the file_lock not the one that we are reporting to the user
+    std::error_code file_lock_ec;
+    if (lock_file(_filelock_fd, file_lock_ec))
     {
       // if we can lock the file, then the process is not running
       is_running = false;
 
       // we also want to unlock the file in case we repeat the check
-      if (::flock(_filelock_fd, LOCK_UN | LOCK_NB) == -1)
+      if (!unlock_file(_filelock_fd, file_lock_ec))
       {
         ec = std::error_code{errno, std::generic_category()};
       }
     }
-    else if (errno == EWOULDBLOCK)
+    else if (file_lock_ec.value() == EWOULDBLOCK)
     {
       // the file is still locked
       is_running = true;
@@ -359,6 +362,7 @@ public:
       ec = std::error_code{errno, std::generic_category()};
     }
 
+    // user needs to check !ec first before accessing the result
     return is_running;
   }
 

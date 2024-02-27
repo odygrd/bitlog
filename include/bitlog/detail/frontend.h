@@ -3,13 +3,17 @@
 // Include always common first as it defines FMTBITLOG_HEADER_ONLY
 #include "bitlog/detail/common.h"
 
-#include <span>
-#include <cstdint>
-#include <string_view>
+#include <array>
 #include <atomic>
+#include <cstdint>
+#include <filesystem>
+#include <span>
+#include <string_view>
 #include <utility>
+#include <vector>
 
 #include "bitlog/bundled/fmt/format.h"
+#include "bitlog/detail/bounded_queue.h"
 #include "bitlog/detail/encode.h"
 
 namespace bitlog::detail
@@ -105,6 +109,90 @@ template <StringLiteral File, StringLiteral Function, uint32_t Line, LogLevel Le
 MacroMetadataNode marco_metadata_node{get_macro_metadata<File, Function, Line, Level, LogFormat, Args...>()};
 
 /**
+ * @brief Writes log statement metadata information to a YAML file.
+ *
+ * @param path The path where the file will be written.
+ */
+void inline write_log_statements_metadata_file(std::filesystem::path const& path) noexcept
+{
+  MetadataFile metadata_writer;
+
+  if (!metadata_writer.init_writer(path / LOG_STATEMENTS_METADATA_FILENAME))
+  {
+    return;
+  }
+
+  // First write some generic key/values
+  std::string file_data = fmtbitlog::format("process_id: {}\n", ::getpid());
+
+  std::error_code ec;
+  if (!metadata_writer.write(file_data.data(), file_data.size(), ec))
+  {
+    std::abort();
+  }
+
+  // Then write all log statement metadata
+  file_data = "log_statements:\n";
+  if (!metadata_writer.write(file_data.data(), file_data.size(), ec))
+  {
+    std::abort();
+  }
+
+  // Store them in a vector to write them in reverse. It doesn't make difference just makes
+  // the metadata file look consistent with the logger-metadata
+  std::vector<MacroMetadataNode const*> metadata_vec;
+  metadata_vec.reserve(128);
+
+  MacroMetadataNode const* cur = get_macro_metadata_head_node();
+  while (cur)
+  {
+    metadata_vec.push_back(cur);
+    cur = cur->next;
+  }
+
+  for (auto metadata_node_it = metadata_vec.rbegin(); metadata_node_it != metadata_vec.rend(); ++metadata_node_it)
+  {
+    MacroMetadataNode const* metadata_node = *metadata_node_it;
+
+    std::string type_descriptors_str;
+    for (size_t i = 0; i < metadata_node->macro_metadata.type_descriptors.size(); ++i)
+    {
+      type_descriptors_str +=
+        std::to_string(static_cast<uint32_t>(metadata_node->macro_metadata.type_descriptors[i]));
+
+      if (i != metadata_node->macro_metadata.type_descriptors.size() - 1)
+      {
+        type_descriptors_str += " ";
+      }
+    }
+
+    if (type_descriptors_str.empty())
+    {
+      file_data = fmtbitlog::format(
+        "  - id: {}\n    file: {}\n    line: {}\n    function: {}\n    log_format: {}\n    "
+        "log_level: {}\n",
+        metadata_node->id, metadata_node->macro_metadata.file, metadata_node->macro_metadata.line,
+        metadata_node->macro_metadata.function, metadata_node->macro_metadata.log_format,
+        static_cast<uint32_t>(metadata_node->macro_metadata.level));
+    }
+    else
+    {
+      file_data = fmtbitlog::format(
+        "  - id: {}\n    file: {}\n    line: {}\n    function: {}\n    log_format: {}\n    "
+        "type_descriptors: {}\n    log_level: {}\n",
+        metadata_node->id, metadata_node->macro_metadata.file, metadata_node->macro_metadata.line,
+        metadata_node->macro_metadata.function, metadata_node->macro_metadata.log_format,
+        type_descriptors_str, static_cast<uint32_t>(metadata_node->macro_metadata.level));
+    }
+
+    if (!metadata_writer.write(file_data.data(), file_data.size(), ec))
+    {
+      std::abort();
+    }
+  }
+}
+
+/**
  * TODO
  */
 template <typename TConfig>
@@ -149,4 +237,4 @@ ThreadContext<TConfig>& get_thread_context(TConfig const& config) noexcept
   thread_local ThreadContext<TConfig> thread_context{config};
   return thread_context;
 }
-}
+} // namespace bitlog::detail
