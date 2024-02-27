@@ -113,7 +113,7 @@ MacroMetadataNode marco_metadata_node{get_macro_metadata<File, Function, Line, L
  *
  * @param path The path where the file will be written.
  */
-void inline write_log_statements_metadata_file(std::filesystem::path const& path) noexcept
+void inline create_log_statements_metadata_file(std::filesystem::path const& path) noexcept
 {
   MetadataFile metadata_writer;
 
@@ -189,6 +189,55 @@ void inline write_log_statements_metadata_file(std::filesystem::path const& path
     {
       std::abort();
     }
+  }
+}
+
+/**
+ * @brief Writes loggers metadata information to a YAML file.
+ *
+ * @param path The path where the file will be written.
+ */
+void inline create_loggers_metadata_file(std::filesystem::path const& path) noexcept
+{
+  MetadataFile metadata_writer;
+
+  if (!metadata_writer.init_writer(path / LOGGERS_METADATA_FILENAME))
+  {
+    return;
+  }
+
+  // First write some generic key/values
+  std::string file_data = "loggers:\n";
+
+  std::error_code ec;
+  if (!metadata_writer.write(file_data.data(), file_data.size(), ec))
+  {
+    std::abort();
+  }
+}
+
+/**
+ * @brief Appends loggers metadata information to a YAML file.
+ *
+ * @param path The path where the file will be written.
+ */
+void inline append_loggers_metadata_file(std::filesystem::path const& path, uint32_t logger_id,
+                                         std::string const& logger_name) noexcept
+{
+  MetadataFile metadata_writer;
+
+  if (!metadata_writer.init_writer(path / LOGGERS_METADATA_FILENAME))
+  {
+    return;
+  }
+
+  std::string const file_data = std::format("  - id: {}\n    name: {}\n", logger_id, logger_name);
+
+  std::error_code ec;
+  if (!metadata_writer.write(file_data.data(), file_data.size(), ec))
+  {
+    // TODO:: error handling ?
+    std::abort();
   }
 }
 

@@ -8,7 +8,7 @@ using log_client_config_t = bitlog::Config<bitlog::detail::BoundedQueue, false>;
 
 TEST_SUITE_BEGIN("MetadataFiles");
 
-TEST_CASE("read_write_log_statement_metadata")
+TEST_CASE("create_read_log_statement_metadata")
 {
   {
     REQUIRE_EQ(bitlog::detail::marco_metadata_node<"test_macro_metadata.cpp", "macro_metadata_node_1", 32, bitlog::LogLevel::Info, "hello {} {} {}", int, long int, double>.id, 0);
@@ -17,8 +17,8 @@ TEST_CASE("read_write_log_statement_metadata")
   }
 
   // Write all metadata to a file
-  log_client_config_t log_client_config{"read_write_log_statement_metadata_test"};
-  bitlog::detail::write_log_statements_metadata_file(log_client_config.instance_dir());
+  log_client_config_t log_client_config{"create_read_log_statement_metadata_test"};
+  bitlog::detail::create_log_statements_metadata_file(log_client_config.instance_dir());
 
   // Read the file
   auto const [log_statements_metadata_vec, process_id] =
@@ -56,4 +56,39 @@ TEST_CASE("read_write_log_statement_metadata")
   std::filesystem::remove_all(log_client_config.app_dir());
 }
 
+TEST_CASE("create_read_loggers_metadata")
+{
+  log_client_config_t log_client_config{"create_read_loggers_metadata_test"};
+
+  // File doesn't exist
+  std::vector<bitlog::detail::LoggerMetadata> logger_metadata;
+  logger_metadata = bitlog::detail::read_loggers_metadata_file(log_client_config.instance_dir());
+  REQUIRE_EQ(logger_metadata.size(), 0);
+
+  // Create the file
+  bitlog::detail::create_loggers_metadata_file(log_client_config.instance_dir());
+
+  // Check loggers
+  logger_metadata = bitlog::detail::read_loggers_metadata_file(log_client_config.instance_dir());
+  REQUIRE_EQ(logger_metadata.size(), 0);
+
+  // Append a logger
+  bitlog::detail::append_loggers_metadata_file(log_client_config.instance_dir(), 0, "logger_main");
+
+  // Check loggers
+  logger_metadata = bitlog::detail::read_loggers_metadata_file(log_client_config.instance_dir());
+  REQUIRE_EQ(logger_metadata.size(), 1);
+  REQUIRE_EQ(logger_metadata[0].name, "logger_main");
+
+  // Append another logger
+  bitlog::detail::append_loggers_metadata_file(log_client_config.instance_dir(), 1, "another_logger");
+
+  // Check loggers
+  logger_metadata = bitlog::detail::read_loggers_metadata_file(log_client_config.instance_dir());
+  REQUIRE_EQ(logger_metadata.size(), 2);
+  REQUIRE_EQ(logger_metadata[0].name, "logger_main");
+  REQUIRE_EQ(logger_metadata[1].name, "another_logger");
+
+  std::filesystem::remove_all(log_client_config.app_dir());
+}
 TEST_SUITE_END();

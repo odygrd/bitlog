@@ -215,4 +215,88 @@ std::pair<std::vector<LogStatementMetadata>, std::string> inline read_log_statem
 
   return ret_val;
 }
+
+/**
+ * @brief Reads the logger metadata file and populates the logger metadata.
+ *
+ * This function reads the specified logger metadata file and populates the logger metadata.
+ * It is intended to be called once at the beginning.
+ *
+ * @param path The path to the logger metadata file.
+ * @return A vector containing the logger metadata.
+ */
+std::vector<LoggerMetadata> inline read_loggers_metadata_file(std::filesystem::path const& path)
+{
+  MetadataFile logger_metadata_file;
+  std::vector<LoggerMetadata> ret_val;
+
+  if (!logger_metadata_file.init_reader(path / LOGGERS_METADATA_FILENAME))
+  {
+    return ret_val;
+  }
+
+  // Read the file line by line
+  char buffer[2048];
+  while (fgets(buffer, sizeof(buffer), logger_metadata_file.get_file_ptr()))
+  {
+    auto line = std::string_view{buffer};
+
+    if (line.starts_with("loggers"))
+    {
+      long int prev_pos = ftell(logger_metadata_file.get_file_ptr());
+
+      while (fgets(buffer, sizeof(buffer), logger_metadata_file.get_file_ptr()))
+      {
+        line = std::string_view{buffer};
+
+        if (!line.starts_with("  "))
+        {
+          // finished reading loggers block
+          fseek(logger_metadata_file.get_file_ptr(), prev_pos, SEEK_SET);
+          break;
+        }
+        else if (line.starts_with("  - id"))
+        {
+          auto const logger_id_str = extract_value_from_line(line, "  - id");
+          uint32_t logger_id;
+          auto [ptr1, fec1] = std::from_chars(
+            logger_id_str.data(), logger_id_str.data() + logger_id_str.length(), logger_id);
+
+          if (fec1 != std::errc{})
+          {
+            // TODO:: report error
+          }
+
+          if (logger_id != ret_val.size())
+          {
+            // Expecting incrementing id
+            std::abort();
+          }
+
+          auto& lm = ret_val.emplace_back();
+
+          // Read rest of lines for this id
+          prev_pos = ftell(logger_metadata_file.get_file_ptr());
+          while (fgets(buffer, sizeof(buffer), logger_metadata_file.get_file_ptr()))
+          {
+            line = std::string_view{buffer};
+
+            if (!line.starts_with("    "))
+            {
+              // finished reading this log statement fields
+              fseek(logger_metadata_file.get_file_ptr(), prev_pos, SEEK_SET);
+              break;
+            }
+            else if (line.starts_with("    name"))
+            {
+              lm.name = extract_value_from_line(line, "    name");
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return ret_val;
+}
 } // namespace bitlog::detail

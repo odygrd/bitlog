@@ -60,6 +60,7 @@ namespace bitlog::detail
 static constexpr size_t CACHE_LINE_SIZE_BYTES{64u};
 static constexpr size_t CACHE_LINE_ALIGNED{2 * CACHE_LINE_SIZE_BYTES};
 static constexpr char const* LOG_STATEMENTS_METADATA_FILENAME{"log-statements-metadata.yaml"};
+static constexpr char const* LOGGERS_METADATA_FILENAME{"loggers-metadata.yaml"};
 
 /**
  * Round up a value to the nearest multiple of a specified size.
