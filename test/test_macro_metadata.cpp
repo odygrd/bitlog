@@ -15,7 +15,7 @@ TEST_CASE("macro_metadata_node")
 
   // Iterate through all the generated metadata
   size_t cnt{0};
-  bitlog::detail::MacroMetadataNode const* cur = bitlog::detail::get_macro_metadata_head_node();
+  bitlog::detail::MacroMetadataNode const* cur = bitlog::detail::macro_metadata_head_node();
 
   while (cur)
   {

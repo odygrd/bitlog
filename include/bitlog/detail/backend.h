@@ -101,7 +101,7 @@ std::pair<std::vector<LogStatementMetadata>, std::string> inline read_log_statem
 
   // Read the file line by line
   char buffer[2048];
-  while (std::fgets(buffer, sizeof(buffer), log_statements_metadata_file.get_file_ptr()))
+  while (std::fgets(buffer, sizeof(buffer), log_statements_metadata_file.file_ptr()))
   {
     auto line = std::string_view{buffer};
 
@@ -111,16 +111,16 @@ std::pair<std::vector<LogStatementMetadata>, std::string> inline read_log_statem
     }
     else if (line.starts_with("log_statements"))
     {
-      long int prev_pos = std::ftell(log_statements_metadata_file.get_file_ptr());
+      long int prev_pos = std::ftell(log_statements_metadata_file.file_ptr());
 
-      while (std::fgets(buffer, sizeof(buffer), log_statements_metadata_file.get_file_ptr()))
+      while (std::fgets(buffer, sizeof(buffer), log_statements_metadata_file.file_ptr()))
       {
         line = std::string_view{buffer};
 
         if (!line.starts_with("  "))
         {
           // finished reading log_statements block
-          fseek(log_statements_metadata_file.get_file_ptr(), prev_pos, SEEK_SET);
+          fseek(log_statements_metadata_file.file_ptr(), prev_pos, SEEK_SET);
           break;
         }
         else if (line.starts_with("  - id"))
@@ -144,16 +144,16 @@ std::pair<std::vector<LogStatementMetadata>, std::string> inline read_log_statem
           auto& lsm = ret_val.first.emplace_back();
 
           // Read rest of lines for this id
-          prev_pos = ftell(log_statements_metadata_file.get_file_ptr());
+          prev_pos = ftell(log_statements_metadata_file.file_ptr());
 
-          while (std::fgets(buffer, sizeof(buffer), log_statements_metadata_file.get_file_ptr()))
+          while (std::fgets(buffer, sizeof(buffer), log_statements_metadata_file.file_ptr()))
           {
             line = std::string_view{buffer};
 
             if (!line.starts_with("    "))
             {
               // finished reading this log statement fields
-              fseek(log_statements_metadata_file.get_file_ptr(), prev_pos, SEEK_SET);
+              fseek(log_statements_metadata_file.file_ptr(), prev_pos, SEEK_SET);
               break;
             }
             else if (line.starts_with("    file"))
@@ -237,22 +237,22 @@ std::vector<LoggerMetadata> inline read_loggers_metadata_file(std::filesystem::p
 
   // Read the file line by line
   char buffer[2048];
-  while (fgets(buffer, sizeof(buffer), logger_metadata_file.get_file_ptr()))
+  while (fgets(buffer, sizeof(buffer), logger_metadata_file.file_ptr()))
   {
     auto line = std::string_view{buffer};
 
     if (line.starts_with("loggers"))
     {
-      long int prev_pos = ftell(logger_metadata_file.get_file_ptr());
+      long int prev_pos = ftell(logger_metadata_file.file_ptr());
 
-      while (fgets(buffer, sizeof(buffer), logger_metadata_file.get_file_ptr()))
+      while (fgets(buffer, sizeof(buffer), logger_metadata_file.file_ptr()))
       {
         line = std::string_view{buffer};
 
         if (!line.starts_with("  "))
         {
           // finished reading loggers block
-          fseek(logger_metadata_file.get_file_ptr(), prev_pos, SEEK_SET);
+          fseek(logger_metadata_file.file_ptr(), prev_pos, SEEK_SET);
           break;
         }
         else if (line.starts_with("  - id"))
@@ -276,15 +276,15 @@ std::vector<LoggerMetadata> inline read_loggers_metadata_file(std::filesystem::p
           auto& lm = ret_val.emplace_back();
 
           // Read rest of lines for this id
-          prev_pos = ftell(logger_metadata_file.get_file_ptr());
-          while (fgets(buffer, sizeof(buffer), logger_metadata_file.get_file_ptr()))
+          prev_pos = ftell(logger_metadata_file.file_ptr());
+          while (fgets(buffer, sizeof(buffer), logger_metadata_file.file_ptr()))
           {
             line = std::string_view{buffer};
 
             if (!line.starts_with("    "))
             {
               // finished reading this log statement fields
-              fseek(logger_metadata_file.get_file_ptr(), prev_pos, SEEK_SET);
+              fseek(logger_metadata_file.file_ptr(), prev_pos, SEEK_SET);
               break;
             }
             else if (line.starts_with("    name"))

@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <mutex>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -82,7 +83,7 @@ template <typename T>
  *
  * @return The ID of the current thread.
  */
-[[nodiscard]] inline uint32_t get_thread_id() noexcept
+[[nodiscard]] inline uint32_t thread_id() noexcept
 {
   thread_local uint32_t thread_id{0};
   if (!thread_id)
@@ -100,7 +101,7 @@ template <typename T>
  * @param memory_page_size The specified memory page size to use
  * @return The size of the system's page or the specified memory page size.
  */
-[[nodiscard]] inline size_t get_page_size() noexcept
+[[nodiscard]] inline size_t page_size() noexcept
 {
   thread_local uint32_t page_size{0};
   if (!page_size)
@@ -220,7 +221,7 @@ public:
     return true;
   }
 
-  [[nodiscard]] FILE* get_file_ptr() noexcept { return _file; }
+  [[nodiscard]] FILE* file_ptr() noexcept { return _file; }
 
 private:
   [[nodiscard]] bool _init(std::filesystem::path const& path, char const* mode)
@@ -251,4 +252,18 @@ private:
   std::string _line;
   std::FILE* _file{nullptr};
 };
+
+/**
+ * Initialises once, intended for use with templated classes.
+ * This function ensures that the initialization is performed only once,
+ * even when instantiated with different template parameters.
+ * @return true if initialization is performed, false otherwise.
+ */
+[[nodiscard]] bool initialise_bitlog_once()
+{
+  static std::once_flag once_flag;
+  bool init_called{false};
+  std::call_once(once_flag, [&init_called]() mutable { init_called = true; });
+  return init_called;
+}
 } // namespace bitlog::detail

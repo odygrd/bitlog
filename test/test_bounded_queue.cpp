@@ -5,7 +5,8 @@
 #include "bitlog/core.h"
 #include "bitlog/detail/bounded_queue.h"
 
-using log_client_config_t = bitlog::Config<bitlog::detail::BoundedQueue, true>;
+using bitlog_options_t = bitlog::BitlogOptions<bitlog::QueueType::BoundedBlocking, true>;
+using bitlog_manager_t = bitlog::BitlogManager<bitlog_options_t>;
 
 TEST_SUITE_BEGIN("BoundedQueue");
 
@@ -66,15 +67,14 @@ void bounded_queue_read_write_test(std::filesystem::path const& path)
 
 TEST_CASE("bounded_queue_read_write_1")
 {
-  log_client_config_t log_client_config{"bounded_queue_read_write_test_1"};
-  bounded_queue_read_write_test<bitlog::detail::BoundedQueueImpl<uint16_t, false>>(
-    log_client_config.instance_dir());
+  bitlog_manager_t bitlog_manager{"bounded_queue_read_write_1"};
+  bounded_queue_read_write_test<bitlog::detail::BoundedQueueImpl<uint16_t, false>>(bitlog_manager.run_dir());
 }
 
 TEST_CASE("bounded_queue_read_write_2")
 {
-  log_client_config_t log_client_config{"bounded_queue_read_write_test_2"};
-  bounded_queue_read_write_test<bitlog::detail::BoundedQueueImpl<uint16_t, true>>(log_client_config.instance_dir());
+  bitlog_manager_t bitlog_manager{"bounded_queue_read_write_2"};
+  bounded_queue_read_write_test<bitlog::detail::BoundedQueueImpl<uint16_t, true>>(bitlog_manager.run_dir());
 }
 
 template <typename TQueue>
@@ -177,14 +177,14 @@ void bounded_queue_read_write_threads(std::filesystem::path const& path)
 
 TEST_CASE("bounded_queue_read_write_threads_1")
 {
-  log_client_config_t log_client_config{"bounded_queue_read_write_threads_test_1"};
-  bounded_queue_read_write_threads<bitlog::detail::BoundedQueue>(log_client_config.instance_dir());
+  bitlog_manager_t bitlog_manager{"bounded_queue_read_write_threads_1"};
+  bounded_queue_read_write_threads<bitlog::detail::BoundedQueue>(bitlog_manager.run_dir());
 }
 
 TEST_CASE("bounded_queue_read_write_threads_2")
 {
-  log_client_config_t log_client_config{"bounded_queue_read_write_threads_test_2"};
-  bounded_queue_read_write_threads<bitlog::detail::BoundedQueueX86>(log_client_config.instance_dir());
+  bitlog_manager_t bitlog_manager{"bounded_queue_read_write_threads_2"};
+  bounded_queue_read_write_threads<bitlog::detail::BoundedQueueX86>(bitlog_manager.run_dir());
 }
 
 TEST_SUITE_END();

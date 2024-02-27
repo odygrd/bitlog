@@ -63,7 +63,7 @@ struct MacroMetadata
  * @return Reference to the macro metadata.
  */
 template <StringLiteral File, StringLiteral Function, uint32_t Line, LogLevel Level, StringLiteral LogFormat, typename... Args>
-[[nodiscard]] MacroMetadata const& get_macro_metadata() noexcept
+[[nodiscard]] MacroMetadata const& make_macro_metadata() noexcept
 {
   static constexpr std::array<TypeDescriptorName, sizeof...(Args)> type_descriptors{
     GetTypeDescriptor<Args>::value...};
@@ -82,7 +82,7 @@ struct MacroMetadataNode;
  * @brief Function returning a reference to the head of the macro metadata nodes.
  * @return Reference to the head of macro metadata nodes.
  */
-[[nodiscard]] MacroMetadataNode*& get_macro_metadata_head_node() noexcept
+[[nodiscard]] MacroMetadataNode*& macro_metadata_head_node() noexcept
 {
   static MacroMetadataNode* head{nullptr};
   return head;
@@ -94,7 +94,7 @@ struct MacroMetadataNode;
 struct MacroMetadataNode : public UniqueId<MacroMetadataNode>
 {
   explicit MacroMetadataNode(MacroMetadata const& macro_metadata)
-    : macro_metadata(macro_metadata), next(std::exchange(get_macro_metadata_head_node(), this))
+    : macro_metadata(macro_metadata), next(std::exchange(macro_metadata_head_node(), this))
   {
   }
 
@@ -106,7 +106,7 @@ struct MacroMetadataNode : public UniqueId<MacroMetadataNode>
  * @brief Template instance for macro metadata node initialization.
  */
 template <StringLiteral File, StringLiteral Function, uint32_t Line, LogLevel Level, StringLiteral LogFormat, typename... Args>
-MacroMetadataNode marco_metadata_node{get_macro_metadata<File, Function, Line, Level, LogFormat, Args...>()};
+MacroMetadataNode marco_metadata_node{make_macro_metadata<File, Function, Line, Level, LogFormat, Args...>()};
 
 /**
  * @brief Writes log statement metadata information to a YAML file.
@@ -143,7 +143,7 @@ void inline create_log_statements_metadata_file(std::filesystem::path const& pat
   std::vector<MacroMetadataNode const*> metadata_vec;
   metadata_vec.reserve(128);
 
-  MacroMetadataNode const* cur = get_macro_metadata_head_node();
+  MacroMetadataNode const* cur = macro_metadata_head_node();
   while (cur)
   {
     metadata_vec.push_back(cur);
@@ -231,7 +231,7 @@ void inline append_loggers_metadata_file(std::filesystem::path const& path, uint
     return;
   }
 
-  std::string const file_data = std::format("  - id: {}\n    name: {}\n", logger_id, logger_name);
+  std::string const file_data = fmtbitlog::format("  - id: {}\n    name: {}\n", logger_id, logger_name);
 
   std::error_code ec;
   if (!metadata_writer.write(file_data.data(), file_data.size(), ec))
@@ -256,7 +256,7 @@ public:
   explicit ThreadContext(TConfig const& config) : _config(config)
   {
     std::string const queue_file_base = fmtbitlog::format("{}.{}.ext", this->id, _queue_id++);
-    std::error_code res = _queue.create(_config.queue_capacity(), _config.instance_dir() / queue_file_base);
+    std::error_code res = _queue.create(_config.queue_capacity_bytes(), _config.run_dir() / queue_file_base);
 
     if (res)
     {
@@ -264,7 +264,7 @@ public:
     }
   }
 
-  [[nodiscard]] queue_t& get_queue() noexcept { return _queue; }
+  [[nodiscard]] queue_t& queue() noexcept { return _queue; }
 
 private:
   TConfig const& _config;
@@ -281,7 +281,7 @@ private:
  * created for the same thread.
  */
 template <typename TConfig>
-ThreadContext<TConfig>& get_thread_context(TConfig const& config) noexcept
+ThreadContext<TConfig>& thread_context(TConfig const& config) noexcept
 {
   thread_local ThreadContext<TConfig> thread_context{config};
   return thread_context;

@@ -72,18 +72,19 @@ public:
    *
    * @param capacity The capacity of the shared memory storage.
    * @param path_base The path within shared memory.
-   * @param page_size The size of memory pages.
+   * @param memory_page_size The size of memory pages.
    * @param reader_store_percentage The percentage of memory reserved for the reader.
    * @param ec out-parameter for error reporting
    * @return true if the queue was created, false otherwise.
    */
-  [[nodiscard]] bool create(integer_type capacity, std::filesystem::path path_base, MemoryPageSize page_size,
+  [[nodiscard]] bool create(integer_type capacity, std::filesystem::path path_base, MemoryPageSize memory_page_size,
                             integer_type reader_store_percentage, std::error_code& ec) noexcept
   {
     bool ret_val{true};
 
     // first need to figure out the page size
-    uint32_t const page_size_bytes = (page_size == MemoryPageSize::RegularPage) ? get_page_size() : page_size;
+    uint32_t const page_size_bytes =
+      (memory_page_size == MemoryPageSize::RegularPage) ? page_size() : memory_page_size;
 
     // capacity must be always rounded to the page size otherwise mmap will fail
     capacity = round_up_to_nearest(capacity, static_cast<integer_type>(page_size_bytes));
@@ -96,7 +97,7 @@ public:
     {
       if (ftruncate(storage_fd, static_cast<off_t>(capacity)) == 0)
       {
-        ret_val = _memory_map_storage(storage_fd, capacity, page_size, ec);
+        ret_val = _memory_map_storage(storage_fd, capacity, memory_page_size, ec);
         if (ret_val)
         {
           std::memset(_storage, 0, capacity);
@@ -109,7 +110,7 @@ public:
           {
             if (ftruncate(metadata_fd, static_cast<off_t>(sizeof(Metadata))) == 0)
             {
-              ret_val = _memory_map_metadata(metadata_fd, sizeof(Metadata), page_size, ec);
+              ret_val = _memory_map_metadata(metadata_fd, sizeof(Metadata), memory_page_size, ec);
               if (ret_val)
               {
                 std::memset(_metadata, 0, sizeof(Metadata));

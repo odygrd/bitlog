@@ -146,8 +146,8 @@ template <typename... Args>
                                                                                  Args const&... args) noexcept
 {
   uint32_t c_style_string_lengths_index{0};
-  auto get_arg_size = []<typename T>(uint32_t* c_style_string_lengths,
-                                     uint32_t& c_style_string_lengths_index, T const& arg)
+  auto arg_size = []<typename T>(uint32_t* c_style_string_lengths,
+                                 uint32_t& c_style_string_lengths_index, T const& arg)
   {
     if constexpr (is_char_array_type<T>())
     {
@@ -170,7 +170,7 @@ template <typename... Args>
     }
   };
 
-  return (0u + ... + get_arg_size(c_style_string_lengths, c_style_string_lengths_index, args));
+  return (0u + ... + arg_size(c_style_string_lengths, c_style_string_lengths_index, args));
 }
 
 /**
