@@ -5,7 +5,8 @@
 #include "bitlog/common/bounded_queue.h"
 #include "bitlog/frontend.h"
 
-using frontend_options_t = bitlog::FrontendOptions<bitlog::QueueType::BoundedBlocking, true>;
+using frontend_options_t =
+  bitlog::FrontendOptions<bitlog::QueuePolicyOption::BoundedBlocking, bitlog::QueueTypeOption::Default, true>;
 using frontend_manager_t = bitlog::FrontendManager<frontend_options_t>;
 
 TEST_SUITE_BEGIN("BoundedQueue");
@@ -20,7 +21,7 @@ void bounded_queue_read_write_test(std::filesystem::path const& path)
     TQueue queue;
 
     uint32_t const queue_capacity = 4096;
-    REQUIRE(queue.create(queue_capacity, path, bitlog::MemoryPageSize::RegularPage, 5, ec));
+    REQUIRE(queue.create(path, queue_capacity, bitlog::MemoryPageSize::RegularPage, 5, ec));
 
     for (uint32_t i = 0; i < queue_capacity * 25u; ++i)
     {
@@ -86,7 +87,7 @@ void bounded_queue_read_write_threads(std::filesystem::path const& path)
       TQueue queue;
       uint32_t const queue_capacity = 131'072;
       std::error_code ec;
-      bool res = queue.create(queue_capacity, path, bitlog::MemoryPageSize::RegularPage, 5, ec);
+      bool res = queue.create(path, queue_capacity, bitlog::MemoryPageSize::RegularPage, 5, ec);
 
       REQUIRE(res);
 

@@ -7,8 +7,10 @@
 #include <filesystem>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <unordered_map>
 
 #include "bitlog/common/common.h"
@@ -16,25 +18,36 @@
 
 namespace bitlog
 {
-enum class QueueType
+enum class QueuePolicyOption
 {
   BoundedDropping,
   BoundedBlocking,
   UnboundedNoLimit
 };
 
+enum class QueueTypeOption
+{
+  Default,
+  X86Optimised
+};
+
 /**
  * @brief Structure representing configuration options for the frontend.
  *
- * @tparam QueueOption The type of queue to be used.
+ * @tparam QueuePolicy The policy of queue to be used.
+ * @tparam QueueType The type of queue to be used.
  * @tparam UseCustomMemcpyX86 Boolean indicating whether to use a custom memcpy implementation for x86.
  */
-template <QueueType QueueOption, bool UseCustomMemcpyX86>
+template <QueuePolicyOption QueuePolicy, QueueTypeOption QueueType, bool UseCustomMemcpyX86>
 struct FrontendOptions
 {
-  static constexpr QueueType queue_type = QueueOption;
+  static constexpr QueuePolicyOption queue_policy = QueuePolicy;
   static constexpr bool use_custom_memcpy_x86 = UseCustomMemcpyX86;
-  uint64_t queue_capacity_bytes{131'072u};
+  using queue_type =
+    std::conditional_t<QueueType == QueueTypeOption::Default, bitlog::detail::BoundedQueue, bitlog::detail::BoundedQueueX86>;
+
+  uint64_t queue_capacity_bytes = 131'072u;
+  MemoryPageSize memory_page_size = MemoryPageSize::RegularPage;
 };
 
 /** Forward declaration **/
@@ -50,8 +63,10 @@ public:
   /**
    * @brief Constructs a LoggerBase with a given name.
    * @param name The name of the logger.
+   * @param run_dir Current running dir
    */
-  explicit LoggerBase(std::string_view name) : _name(name){};
+  LoggerBase(std::filesystem::path const& run_dir, std::string_view name)
+    : _run_dir(run_dir), _name(name){};
 
   /**
    * @brief Gets the log level of the logger.
@@ -75,6 +90,12 @@ public:
   [[nodiscard]] std::string const& name() const noexcept { return _name; }
 
   /**
+   * @brief Gets the current run_dir
+   * @return run dir
+   */
+  [[nodiscard]] std::filesystem::path const& run_dir() const noexcept { return _run_dir; }
+
+  /**
    * @brief Checks if a log statement with the given level can be logged by this logger.
    * @param log_statement_level The log level of the log statement.
    * @return True if the log statement can be logged, false otherwise.
@@ -96,6 +117,7 @@ public:
   }
 
 private:
+  std::filesystem::path const& _run_dir;
   std::string _name;
   std::atomic<LogLevel> _log_level{LogLevel::Info};
 };
@@ -124,6 +146,17 @@ public:
             LogLevel Level, detail::StringLiteral LogFormat, typename... Args>
   void log(Args const&... args)
   {
+    // Get the queue associated with this thread
+    detail::ThreadLocalQueue<frontend_options_t>& tl_queue =
+      detail::get_thread_local_queue<frontend_options_t>(run_dir(), _options);
+
+    if (!tl_queue.queue().has_value()) [[unlikely]]
+    {
+      // This can only happen if the queue creation has failed
+      // TODO:: Handle error ?
+      return;
+    }
+
     uint32_t c_style_string_lengths_array[(std::max)(detail::count_c_style_strings<Args...>(), static_cast<uint32_t>(1))];
 
     // Also reserve space for the timestamp the metadata id and the logger id
@@ -131,10 +164,9 @@ public:
       static_cast<uint32_t>(sizeof(uint64_t) + sizeof(uint32_t) + sizeof(uint32_t));
 
     uint32_t const total_args_size = additional_space +
-      calculate_args_size_and_populate_string_lengths(c_style_string_lengths_array, args...);
+      detail::calculate_args_size_and_populate_string_lengths(c_style_string_lengths_array, args...);
 
-    auto& thread_context = get_thread_context<frontend_options_t>(_options);
-    uint8_t* write_buffer = thread_context.queue().prepare_write(total_args_size);
+    uint8_t* write_buffer = tl_queue.queue()->prepare_write(total_args_size);
 
 #ifndef NDEBUG
     uint8_t* start = write_buffer;
@@ -153,12 +185,13 @@ public:
       assert(write_buffer - start == total_args_size);
 #endif
 
-      thread_context.queue().finish_write(total_args_size);
-      thread_context.queue().commit_write();
+      tl_queue.queue()->finish_write(total_args_size);
+      tl_queue.queue()->commit_write();
     }
     else
     {
-      // Queue is full TODO
+      // TODO Queue is full
+      // TODO call tl_queue.reset() to allocate a new queue then tl_queue.queue() again
     }
   }
 
@@ -169,10 +202,11 @@ private:
    * @brief Private constructor for Logger.
    *
    * @param name Name of the logger.
+   * @param run_dir Current running dir
    * @param options Frontend options for the logger.
    */
-  Logger(std::string_view name, frontend_options_t const& options)
-    : LoggerBase(name), _options(options)
+  Logger(std::filesystem::path const& run_dir, std::string_view name, frontend_options_t const& options)
+    : LoggerBase(run_dir, name), _options(options)
   {
   }
 
@@ -267,8 +301,8 @@ public:
     }
 
     // Logger doesn't exist, create a new one
-    auto [it, emplaced] =
-      _logger_registry.emplace(std::make_pair(name, new Logger<frontend_options_t>(name, _options)));
+    auto [it, emplaced] = _logger_registry.emplace(
+      std::make_pair(name, new Logger<frontend_options_t>(_run_dir, name, _options)));
     assert(emplaced);
 
     // Append logger metadata to the loggers-metadata.yaml file
@@ -363,6 +397,18 @@ public:
   [[nodiscard]] frontend_options_t const& options() const noexcept
   {
     return _frontend_manager.options();
+  }
+
+  /**
+   * @brief Retrieves or creates a logger with the specified name.
+   *
+   * @param name The name of the logger.
+   * @return A pointer to the logger with the given name.
+   *         If creation fails while appending to loggers-metadata returns nullptr.
+   */
+  [[nodiscard]] Logger<frontend_options_t>* logger(std::string const& name)
+  {
+    return _frontend_manager.logger(name);
   }
 
 private:

@@ -293,48 +293,89 @@ MacroMetadataNode marco_metadata_node{get_macro_metadata<File, Function, Line, L
 }
 
 /**
- * TODO
+ * @brief Represents a thread-local queue associated with a specific frontend configuration.
+ *
+ * This class inherits from UniqueId to ensure that each thread has a unique identifier.
+ * It is essential for scenarios where a thread is spawned, dies, and then respawns. In such cases,
+ * the operating system might reuse the same thread ID, but UniqueId guarantees a distinct
+ * identifier for each thread instance, preventing potential misidentification.
+ *
+ * @tparam TFrontendOptions The type of frontend options.
  */
-template <typename FrontendOptions>
-class ThreadContext : public UniqueId<ThreadContext<FrontendOptions>>
+template <typename TFrontendOptions>
+class ThreadLocalQueue : public UniqueId<ThreadLocalQueue<TFrontendOptions>>
 {
 public:
-  using queue_t = typename FrontendOptions::queue_t;
+  using frontend_options_t = TFrontendOptions;
 
-  ThreadContext(ThreadContext const&) = delete;
-  ThreadContext& operator=(ThreadContext const&) = delete;
+  ThreadLocalQueue(ThreadLocalQueue const&) = delete;
+  ThreadLocalQueue& operator=(ThreadLocalQueue const&) = delete;
 
-  explicit ThreadContext(FrontendOptions const& options) : _options(options)
+  /**
+   * @brief Construct a ThreadLocalQueue with the specified frontend options.
+   *
+   * @param run_dir Current running dir
+   * @param options The frontend options for the thread-local queue.
+   */
+  explicit ThreadLocalQueue(std::filesystem::path const& run_dir, frontend_options_t const& options)
+    : _run_dir(run_dir), _options(options)
   {
-    std::string const queue_file_base = fmtbitlog::format("{}.{}.ext", this->id, _queue_id++);
-    std::error_code res = _queue.create(_options.queue_capacity_bytes(), _options.run_dir() / queue_file_base);
+    reset();
+  };
 
-    if (res)
+  /**
+   * @brief Retrieve the thread-local queue.
+   *
+   * @return A reference to the thread-local queue.
+   */
+  [[nodiscard]] std::optional<typename frontend_options_t::queue_type>& queue() noexcept
+  {
+    return _queue;
+  }
+
+  /**
+   * @brief Reset the thread-local queue, creating a new one
+   *
+   * The user can call this when the existing queue is full to switch to a new queue.
+   */
+  void reset() noexcept
+  {
+    // user can call this when the existing queue() is full to switch to a new queue
+    std::string const next_queue_base_filename = fmtbitlog::format("{}.{}.ext", this->id, _queue_seq++);
+    _queue.emplace();
+
+    std::error_code ec;
+    if (!_queue->create(_run_dir / next_queue_base_filename, _options.queue_capacity_bytes,
+                        _options.memory_page_size, 5, ec))
     {
-      // TODO:: Error handling ?
+      _queue.reset();
     }
   }
 
-  [[nodiscard]] queue_t& queue() noexcept { return _queue; }
-
 private:
-  FrontendOptions const& _options;
-  queue_t _queue;
-  uint32_t _queue_id{0}; /** Unique counter for each spawned queue by this thread context */
+  frontend_options_t const& _options;
+  std::filesystem::path const& _run_dir;
+  std::optional<typename frontend_options_t::queue_type> _queue; ///< Using optional to destroy and reset the queue to a new one
+  uint32_t _queue_seq{0}; ///< Unique counter for each spawned queue by this thread
 };
 
 /**
- * This function retrieves the thread-specific context.
+ * @brief Retrieve the thread-local queue for a specific frontend configuration.
  *
- * The purpose is to ensure that only one instance of ThreadContext is created
+ * The purpose is to ensure that only one instance of ThreadLocalQueue is created
  * per thread. Without this approach, using thread_local within a templated
- * function, e.g., log<>, could lead to multiple ThreadContext instances being
+ * function, e.g., log<>, could lead to multiple ThreadLocalQueue instances being
  * created for the same thread.
+ *
+ * @param run_dir Current running dir
+ * @param options The frontend options.
+ * @return A reference to the thread-local queue.
  */
 template <typename FrontendOptions>
-ThreadContext<FrontendOptions>& get_thread_context(FrontendOptions const& options) noexcept
+ThreadLocalQueue<FrontendOptions>& get_thread_local_queue(std::filesystem::path const& run_dir,
+                                                          FrontendOptions const& options) noexcept
 {
-  thread_local ThreadContext<FrontendOptions> thread_context{options};
-  return thread_context;
+  thread_local ThreadLocalQueue<FrontendOptions> thread_local_queue{run_dir, options};
+  return thread_local_queue;
 }
 } // namespace bitlog::detail

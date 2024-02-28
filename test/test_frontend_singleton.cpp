@@ -6,7 +6,8 @@ TEST_SUITE_BEGIN("FrontendSingleton");
 
 TEST_CASE("initialise_frontend_singleton")
 {
-  using frontend_options_t = bitlog::FrontendOptions<bitlog::QueueType::BoundedBlocking, true>;
+  using frontend_options_t =
+    bitlog::FrontendOptions<bitlog::QueuePolicyOption::BoundedBlocking, bitlog::QueueTypeOption::Default, true>;
   using frontend_t = bitlog::Frontend<frontend_options_t>;
 
   frontend_options_t frontend_options;

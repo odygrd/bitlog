@@ -69,15 +69,14 @@ public:
 
   /**
    * @brief Creates shared memory for storage, metadata, lock, and ready indicators.
-   *
-   * @param capacity The capacity of the shared memory storage.
    * @param path_base The path within shared memory.
+   * @param capacity The capacity of the shared memory storage.
    * @param memory_page_size The size of memory pages.
    * @param reader_store_percentage The percentage of memory reserved for the reader.
    * @param ec out-parameter for error reporting
    * @return true if the queue was created, false otherwise.
    */
-  [[nodiscard]] bool create(integer_type capacity, std::filesystem::path path_base, MemoryPageSize memory_page_size,
+  [[nodiscard]] bool create(std::filesystem::path path_base, integer_type capacity, MemoryPageSize memory_page_size,
                             integer_type reader_store_percentage, std::error_code& ec) noexcept
   {
     bool ret_val{true};

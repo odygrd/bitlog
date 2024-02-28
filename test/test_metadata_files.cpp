@@ -4,7 +4,8 @@
 #include "bitlog/frontend.h"
 #include "bitlog/frontend/frontend_impl.h"
 
-using frontend_options_t = bitlog::FrontendOptions<bitlog::QueueType::BoundedBlocking, true>;
+using frontend_options_t =
+  bitlog::FrontendOptions<bitlog::QueuePolicyOption::BoundedBlocking, bitlog::QueueTypeOption::Default, true>;
 using frontend_manager_t = bitlog::FrontendManager<frontend_options_t>;
 using logger_t = bitlog::Logger<frontend_options_t>;
 
