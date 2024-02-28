@@ -6,6 +6,7 @@
 
 using frontend_options_t = bitlog::FrontendOptions<bitlog::QueueType::BoundedBlocking, true>;
 using frontend_manager_t = bitlog::FrontendManager<frontend_options_t>;
+using logger_t = bitlog::Logger<frontend_options_t>;
 
 TEST_SUITE_BEGIN("MetadataFiles");
 
@@ -65,12 +66,10 @@ TEST_CASE("create_read_loggers_metadata")
   logger_metadata = bitlog::detail::read_loggers_metadata_file(frontend_manager.run_dir());
   REQUIRE_EQ(logger_metadata.size(), 0);
 
-  // Check loggers
-  logger_metadata = bitlog::detail::read_loggers_metadata_file(frontend_manager.run_dir());
-  REQUIRE_EQ(logger_metadata.size(), 0);
-
-  // Append a logger
-  bitlog::detail::append_loggers_metadata_file(frontend_manager.run_dir(), 0, "logger_main");
+  // Add a logger
+  logger_t* logger_main = frontend_manager.logger("logger_main");
+  REQUIRE_EQ(logger_main->name(), "logger_main");
+  REQUIRE_EQ(logger_main->id, 0);
 
   // Check loggers
   logger_metadata = bitlog::detail::read_loggers_metadata_file(frontend_manager.run_dir());
@@ -78,9 +77,22 @@ TEST_CASE("create_read_loggers_metadata")
   REQUIRE_EQ(logger_metadata[0].name, "logger_main");
 
   // Append another logger
-  bitlog::detail::append_loggers_metadata_file(frontend_manager.run_dir(), 1, "another_logger");
+  logger_t* another_logger = frontend_manager.logger("another_logger");
+  REQUIRE_EQ(another_logger->name(), "another_logger");
+  REQUIRE_EQ(another_logger->id, 1);
 
   // Check loggers
+  logger_metadata = bitlog::detail::read_loggers_metadata_file(frontend_manager.run_dir());
+  REQUIRE_EQ(logger_metadata.size(), 2);
+  REQUIRE_EQ(logger_metadata[0].name, "logger_main");
+  REQUIRE_EQ(logger_metadata[1].name, "another_logger");
+
+  // Try to add existing logger
+  logger_t* existing_logger = frontend_manager.logger("logger_main");
+  REQUIRE_EQ(existing_logger->name(), "logger_main");
+  REQUIRE_EQ(existing_logger->id, 0);
+
+  // Check loggers - nothing is appended
   logger_metadata = bitlog::detail::read_loggers_metadata_file(frontend_manager.run_dir());
   REQUIRE_EQ(logger_metadata.size(), 2);
   REQUIRE_EQ(logger_metadata[0].name, "logger_main");

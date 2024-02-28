@@ -9,6 +9,7 @@
 #include <mutex>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 
 #include "bitlog/common/common.h"
 #include "bitlog/frontend/frontend_impl.h"
@@ -248,7 +249,41 @@ public:
    */
   [[nodiscard]] frontend_options_t const& options() const noexcept { return _options; }
 
+  /**
+   * @brief Retrieves or creates a logger with the specified name.
+   *
+   * @param name The name of the logger.
+   * @return A pointer to the logger with the given name.
+   *         If creation fails while appending to loggers-metadata returns nullptr.
+   */
+  [[nodiscard]] Logger<frontend_options_t>* logger(std::string const& name)
+  {
+    std::lock_guard<std::mutex> lock_guard{_lock};
+
+    // Check if the logger already exists in the registry
+    if (auto search = _logger_registry.find(name); search != std::end(_logger_registry))
+    {
+      return reinterpret_cast<Logger<frontend_options_t>*>(search->second.get());
+    }
+
+    // Logger doesn't exist, create a new one
+    auto [it, emplaced] =
+      _logger_registry.emplace(std::make_pair(name, new Logger<frontend_options_t>(name, _options)));
+    assert(emplaced);
+
+    // Append logger metadata to the loggers-metadata.yaml file
+    if (!detail::append_loggers_metadata_file(_run_dir, it->second->id, it->second->name())) [[unlikely]]
+    {
+      _logger_registry.erase(it);
+      return nullptr;
+    }
+
+    return reinterpret_cast<Logger<frontend_options_t>*>(it->second.get());
+  }
+
 private:
+  mutable std::mutex _lock;
+  std::unordered_map<std::string, std::unique_ptr<LoggerBase>> _logger_registry; ///< key is the logger name, value is a pointer to the logger.
   std::filesystem::path _run_dir;
   frontend_options_t _options;
 };

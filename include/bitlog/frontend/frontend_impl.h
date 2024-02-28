@@ -269,15 +269,16 @@ MacroMetadataNode marco_metadata_node{get_macro_metadata<File, Function, Line, L
  * @brief Appends loggers metadata information to a YAML file.
  *
  * @param path The path where the file will be written.
+ * @return True when the file was successfully created, false otherwise
  */
-void inline append_loggers_metadata_file(std::filesystem::path const& path, uint32_t logger_id,
-                                         std::string const& logger_name) noexcept
+[[nodiscard]] bool inline append_loggers_metadata_file(std::filesystem::path const& path, uint32_t logger_id,
+                                                       std::string const& logger_name) noexcept
 {
   MetadataFile metadata_writer;
 
   if (!metadata_writer.init_writer(path / LOGGERS_METADATA_FILENAME))
   {
-    return;
+    return false;
   }
 
   std::string const file_data = fmtbitlog::format("  - id: {}\n    name: {}\n", logger_id, logger_name);
@@ -285,9 +286,10 @@ void inline append_loggers_metadata_file(std::filesystem::path const& path, uint
   std::error_code ec;
   if (!metadata_writer.write(file_data.data(), file_data.size(), ec))
   {
-    // TODO:: error handling ?
-    std::abort();
+    return false;
   }
+
+  return true;
 }
 
 /**
