@@ -2,9 +2,9 @@
 
 #include <string>
 
-#include "bitlog/detail/encode.h"
-#include "bitlog/detail/decode.h"
+#include "bitlog/backend/decode.h"
 #include "bitlog/bundled/fmt/format.h"
+#include "bitlog/frontend/encode.h"
 
 TEST_SUITE_BEGIN("EncodeDecode");
 

@@ -16,6 +16,8 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
+#include "bitlog/common/types.h"
+
 #define FMTBITLOG_HEADER_ONLY
 
 #if defined(__x86_64__) || defined(_M_X64)
@@ -28,32 +30,6 @@
 #else
   #define BITLOG_ALWAYS_INLINE
 #endif
-
-namespace bitlog
-{
-enum MemoryPageSize : uint32_t
-{
-  RegularPage = 0,
-  HugePage2MB = 2 * 1024 * 1024,
-  HugePage1GB = 1024 * 1024 * 1024
-};
-
-/**
- * Represents log levels
- */
-enum class LogLevel : uint8_t
-{
-  TraceL3,
-  TraceL2,
-  TraceL1,
-  Debug,
-  Info,
-  Warning,
-  Error,
-  Critical,
-  None,
-};
-}
 
 namespace bitlog::detail
 {
@@ -119,30 +95,6 @@ struct StringLiteral
 {
   constexpr StringLiteral(char const (&str)[N]) { std::copy_n(str, N, value); }
   char value[N];
-};
-
-/**
- * Enum defining different type descriptors
- */
-enum class TypeDescriptorName : uint8_t
-{
-  None = 0,
-  Char,
-  SignedChar,
-  UnsignedChar,
-  ShortInt,
-  UnsignedShortInt,
-  Int,
-  UnsignedInt,
-  LongInt,
-  UnsignedLongInt,
-  LongLongInt,
-  UnsignedLongLongInt,
-  Float,
-  Double,
-  CString,
-  CStringArray,
-  StdString
 };
 
 /**
@@ -259,7 +211,7 @@ private:
  * even when instantiated with different template parameters.
  * @return true if initialization is performed, false otherwise.
  */
-[[nodiscard]] bool initialise_bitlog_once()
+[[nodiscard]] bool initialise_frontend_once()
 {
   static std::once_flag once_flag;
   bool init_called{false};

@@ -1,7 +1,7 @@
 #pragma once
 
 // Include always common first as it defines FMTBITLOG_HEADER_ONLY
-#include "bitlog/detail/common.h"
+#include "bitlog/common/common.h"
 
 #include <array>
 #include <atomic>
@@ -13,8 +13,8 @@
 #include <vector>
 
 #include "bitlog/bundled/fmt/format.h"
-#include "bitlog/detail/bounded_queue.h"
-#include "bitlog/detail/encode.h"
+#include "bitlog/common/bounded_queue.h"
+#include "encode.h"
 
 namespace bitlog::detail
 {

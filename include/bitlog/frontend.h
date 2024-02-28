@@ -8,7 +8,8 @@
 #include <mutex>
 #include <string>
 
-#include "bitlog/detail/common.h"
+#include "bitlog/common/common.h"
+#include "bitlog/frontend/frontend_impl.h"
 
 namespace bitlog
 {
@@ -26,7 +27,7 @@ enum class QueueType
  * @tparam UseCustomMemcpyX86 Boolean indicating whether to use a custom memcpy implementation for x86.
  */
 template <QueueType QueueOption, bool UseCustomMemcpyX86>
-struct BitlogOptions
+struct FrontendOptions
 {
   static constexpr QueueType queue_type = QueueOption;
   static constexpr bool use_custom_memcpy_x86 = UseCustomMemcpyX86;
@@ -36,13 +37,13 @@ struct BitlogOptions
 /**
  * @brief Manager class for Bitlog
  *
- * @tparam TBitlogConfig The configuration type for Bitlog.
+ * @tparam TFrontendOptions The configuration type for Bitlog.
  */
-template <typename TBitlogConfig>
-class BitlogManager
+template <typename TFrontendOptions>
+class FrontendManager
 {
 public:
-  using bitlog_options_t = TBitlogConfig;
+  using frontend_options_t = TFrontendOptions;
 
   /**
    * @brief Explicit constructor for BitlogManager.
@@ -50,8 +51,8 @@ public:
    * @param config Configuration options for Bitlog.
    * @param base_dir Base directory path.
    */
-  explicit BitlogManager(std::string_view application_id, bitlog_options_t config = bitlog_options_t{},
-                         std::string_view base_dir = std::string_view{})
+  explicit FrontendManager(std::string_view application_id, frontend_options_t config = frontend_options_t{},
+                           std::string_view base_dir = std::string_view{})
     : _config(std::move(config))
   {
     std::error_code ec{};
@@ -108,23 +109,23 @@ public:
    * @brief Get the configuration options for Bitlog.
    * @return Bitlog configuration options.
    */
-  [[nodiscard]] bitlog_options_t const& config() const noexcept { return _config; }
+  [[nodiscard]] frontend_options_t const& config() const noexcept { return _config; }
 
 private:
   std::filesystem::path _run_dir;
-  bitlog_options_t _config;
+  frontend_options_t _config;
 };
 
 /**
  * @brief Singleton class for Bitlog, providing initialization and access to BitlogManager.
  *
- * @tparam TBitlogConfig The configuration type for Bitlog.
+ * @tparam TFrontendOptions The configuration type for Bitlog.
  */
-template <typename TBitlogConfig>
-class Bitlog
+template <typename TFrontendOptions>
+class Frontend
 {
 public:
-  using bitlog_options_t = TBitlogConfig;
+  using frontend_options_t = TFrontendOptions;
 
   /**
    * @brief Initialize the Bitlog singleton.
@@ -134,16 +135,16 @@ public:
    * @param base_dir Base directory path.
    * @return True if initialization is successful, false otherwise.
    */
-  static bool init(std::string_view application_id, bitlog_options_t config = bitlog_options_t{},
+  static bool init(std::string_view application_id, frontend_options_t config = frontend_options_t{},
                    std::string_view base_dir = std::string_view{})
   {
-    if (!detail::initialise_bitlog_once())
+    if (!detail::initialise_frontend_once())
     {
       return false;
     }
 
     // Set up the singleton
-    _instance.reset(new Bitlog<bitlog_options_t>(application_id, std::move(config), base_dir));
+    _instance.reset(new Frontend<frontend_options_t>(application_id, std::move(config), base_dir));
 
     return true;
   }
@@ -153,7 +154,7 @@ public:
    *
    * @return Reference to the Bitlog singleton instance.
    */
-  [[nodiscard]] static Bitlog<bitlog_options_t>& instance() noexcept
+  [[nodiscard]] static Frontend<frontend_options_t>& instance() noexcept
   {
     assert(_instance);
     return *_instance;
@@ -163,7 +164,10 @@ public:
    * @brief Get the base directory path.
    * @return Base directory path.
    */
-  [[nodiscard]] std::filesystem::path base_dir() const noexcept { return _manager.base_dir(); }
+  [[nodiscard]] std::filesystem::path base_dir() const noexcept
+  {
+    return _frontend_manager.base_dir();
+  }
 
   /**
    * @brief Get the application directory path.
@@ -171,25 +175,31 @@ public:
    */
   [[nodiscard]] std::filesystem::path application_dir() const noexcept
   {
-    return _manager.application_dir();
+    return _frontend_manager.application_dir();
   }
 
   /**
    * @brief Get the run directory path.
    * @return Run directory path.
    */
-  [[nodiscard]] std::filesystem::path const& run_dir() const noexcept { return _manager.run_dir(); }
+  [[nodiscard]] std::filesystem::path const& run_dir() const noexcept
+  {
+    return _frontend_manager.run_dir();
+  }
 
   /**
    * @brief Get the configuration options for Bitlog.
    * @return Bitlog configuration options.
    */
-  [[nodiscard]] bitlog_options_t const& config() const noexcept { return _manager.config(); }
+  [[nodiscard]] frontend_options_t const& config() const noexcept
+  {
+    return _frontend_manager.config();
+  }
 
 private:
-  Bitlog(std::string_view application_id, bitlog_options_t config, std::string_view base_dir)
-    : _manager(application_id, std::move(config), base_dir){};
-  static inline std::unique_ptr<Bitlog<bitlog_options_t>> _instance;
-  BitlogManager<bitlog_options_t> _manager;
+  Frontend(std::string_view application_id, frontend_options_t config, std::string_view base_dir)
+    : _frontend_manager(application_id, std::move(config), base_dir){};
+  static inline std::unique_ptr<Frontend<frontend_options_t>> _instance;
+  FrontendManager<frontend_options_t> _frontend_manager;
 };
 } // namespace bitlog

@@ -1,6 +1,6 @@
 #include "bundled/doctest.h"
 
-#include "bitlog/detail/frontend.h"
+#include "bitlog/frontend/frontend_impl.h"
 
 TEST_SUITE_BEGIN("MacroMetadata");
 

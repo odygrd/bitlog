@@ -2,11 +2,11 @@
 
 #include <thread>
 
-#include "bitlog/core.h"
-#include "bitlog/detail/bounded_queue.h"
+#include "bitlog/common/bounded_queue.h"
+#include "bitlog/frontend.h"
 
-using bitlog_options_t = bitlog::BitlogOptions<bitlog::QueueType::BoundedBlocking, true>;
-using bitlog_manager_t = bitlog::BitlogManager<bitlog_options_t>;
+using frontend_options_t = bitlog::FrontendOptions<bitlog::QueueType::BoundedBlocking, true>;
+using bitlogfrontend_manager_t = bitlog::FrontendManager<frontend_options_t>;
 
 TEST_SUITE_BEGIN("BoundedQueue");
 
@@ -67,14 +67,16 @@ void bounded_queue_read_write_test(std::filesystem::path const& path)
 
 TEST_CASE("bounded_queue_read_write_1")
 {
-  bitlog_manager_t bitlog_manager{"bounded_queue_read_write_1"};
-  bounded_queue_read_write_test<bitlog::detail::BoundedQueueImpl<uint16_t, false>>(bitlog_manager.run_dir());
+  bitlogfrontend_manager_t bitlogfrontend_manager{"bounded_queue_read_write_1"};
+  bounded_queue_read_write_test<bitlog::detail::BoundedQueueImpl<uint16_t, false>>(
+    bitlogfrontend_manager.run_dir());
 }
 
 TEST_CASE("bounded_queue_read_write_2")
 {
-  bitlog_manager_t bitlog_manager{"bounded_queue_read_write_2"};
-  bounded_queue_read_write_test<bitlog::detail::BoundedQueueImpl<uint16_t, true>>(bitlog_manager.run_dir());
+  bitlogfrontend_manager_t bitlogfrontend_manager{"bounded_queue_read_write_2"};
+  bounded_queue_read_write_test<bitlog::detail::BoundedQueueImpl<uint16_t, true>>(
+    bitlogfrontend_manager.run_dir());
 }
 
 template <typename TQueue>
@@ -177,14 +179,14 @@ void bounded_queue_read_write_threads(std::filesystem::path const& path)
 
 TEST_CASE("bounded_queue_read_write_threads_1")
 {
-  bitlog_manager_t bitlog_manager{"bounded_queue_read_write_threads_1"};
-  bounded_queue_read_write_threads<bitlog::detail::BoundedQueue>(bitlog_manager.run_dir());
+  bitlogfrontend_manager_t bitlogfrontend_manager{"bounded_queue_read_write_threads_1"};
+  bounded_queue_read_write_threads<bitlog::detail::BoundedQueue>(bitlogfrontend_manager.run_dir());
 }
 
 TEST_CASE("bounded_queue_read_write_threads_2")
 {
-  bitlog_manager_t bitlog_manager{"bounded_queue_read_write_threads_2"};
-  bounded_queue_read_write_threads<bitlog::detail::BoundedQueueX86>(bitlog_manager.run_dir());
+  bitlogfrontend_manager_t bitlogfrontend_manager{"bounded_queue_read_write_threads_2"};
+  bounded_queue_read_write_threads<bitlog::detail::BoundedQueueX86>(bitlogfrontend_manager.run_dir());
 }
 
 TEST_SUITE_END();

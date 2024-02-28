@@ -1,6 +1,6 @@
 #pragma once
 
-#include "bitlog/detail/common.h"
+#include "bitlog/common/common.h"
 
 #include <cstdint>
 #include <cstring>
@@ -8,7 +8,7 @@
 #include <string_view>
 #include <type_traits>
 
-#include "bitlog/detail/rte_memcpy.h"
+#include "bitlog/common/rte_memcpy.h"
 
 namespace bitlog::detail
 {

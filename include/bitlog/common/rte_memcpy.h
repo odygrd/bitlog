@@ -1,6 +1,6 @@
 #pragma once
 
-#include "bitlog/detail/common.h"
+#include "bitlog/common/common.h"
 
 #define BITLOG_RTE_PACKED __attribute__((__packed__))
 #define BITLOG_RTE_MAY_ALIAS __attribute__((__may_alias__))

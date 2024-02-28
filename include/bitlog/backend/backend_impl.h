@@ -1,7 +1,7 @@
 #pragma once
 
 // Include always common first as it defines FMTBITLOG_HEADER_ONLY
-#include "bitlog/detail/common.h"
+#include "bitlog/common/common.h"
 
 #include <charconv>
 #include <filesystem>
@@ -11,7 +11,7 @@
 #include <vector>
 
 #include "bitlog/bundled/fmt/format.h"
-#include "bitlog/detail/decode.h"
+#include "decode.h"
 
 namespace bitlog::detail
 {

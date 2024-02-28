@@ -1,7 +1,7 @@
 #pragma once
 
 // Include always common first as it defines FMTBITLOG_HEADER_ONLY
-#include "bitlog/detail/common.h"
+#include "bitlog/common/common.h"
 
 #include <string_view>
 #include <vector>

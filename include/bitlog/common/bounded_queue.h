@@ -1,6 +1,6 @@
 #pragma once
 
-#include "bitlog/detail/common.h"
+#include "bitlog/common/common.h"
 
 #include <atomic>
 #include <cstring>
