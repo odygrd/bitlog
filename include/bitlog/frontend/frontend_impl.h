@@ -244,19 +244,19 @@ void inline append_loggers_metadata_file(std::filesystem::path const& path, uint
 /**
  * TODO
  */
-template <typename TConfig>
-class ThreadContext : public UniqueId<ThreadContext<TConfig>>
+template <typename FrontendOptions>
+class ThreadContext : public UniqueId<ThreadContext<FrontendOptions>>
 {
 public:
-  using queue_t = typename TConfig::queue_t;
+  using queue_t = typename FrontendOptions::queue_t;
 
   ThreadContext(ThreadContext const&) = delete;
   ThreadContext& operator=(ThreadContext const&) = delete;
 
-  explicit ThreadContext(TConfig const& config) : _config(config)
+  explicit ThreadContext(FrontendOptions const& options) : _options(options)
   {
     std::string const queue_file_base = fmtbitlog::format("{}.{}.ext", this->id, _queue_id++);
-    std::error_code res = _queue.create(_config.queue_capacity_bytes(), _config.run_dir() / queue_file_base);
+    std::error_code res = _queue.create(_options.queue_capacity_bytes(), _options.run_dir() / queue_file_base);
 
     if (res)
     {
@@ -267,7 +267,7 @@ public:
   [[nodiscard]] queue_t& queue() noexcept { return _queue; }
 
 private:
-  TConfig const& _config;
+  FrontendOptions const& _options;
   queue_t _queue;
   uint32_t _queue_id{0}; /** Unique counter for each spawned queue by this thread context */
 };
@@ -280,10 +280,10 @@ private:
  * function, e.g., log<>, could lead to multiple ThreadContext instances being
  * created for the same thread.
  */
-template <typename TConfig>
-ThreadContext<TConfig>& thread_context(TConfig const& config) noexcept
+template <typename FrontendOptions>
+ThreadContext<FrontendOptions>& thread_context(FrontendOptions const& options) noexcept
 {
-  thread_local ThreadContext<TConfig> thread_context{config};
+  thread_local ThreadContext<FrontendOptions> thread_context{options};
   return thread_context;
 }
 } // namespace bitlog::detail

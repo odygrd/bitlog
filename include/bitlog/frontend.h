@@ -36,8 +36,6 @@ struct FrontendOptions
 
 /**
  * @brief Manager class for Bitlog
- *
- * @tparam TFrontendOptions The configuration type for Bitlog.
  */
 template <typename TFrontendOptions>
 class FrontendManager
@@ -48,12 +46,12 @@ public:
   /**
    * @brief Explicit constructor for BitlogManager.
    * @param application_id Identifier for the application.
-   * @param config Configuration options for Bitlog.
+   * @param options Options for Bitlog.
    * @param base_dir Base directory path.
    */
-  explicit FrontendManager(std::string_view application_id, frontend_options_t config = frontend_options_t{},
+  explicit FrontendManager(std::string_view application_id, frontend_options_t options = frontend_options_t{},
                            std::string_view base_dir = std::string_view{})
-    : _config(std::move(config))
+    : _options(std::move(options))
   {
     std::error_code ec{};
     _run_dir = base_dir.empty() ? (std::filesystem::exists("/dev/shm", ec) ? "/dev/shm" : "/tmp") : base_dir;
@@ -106,20 +104,18 @@ public:
   [[nodiscard]] std::filesystem::path const& run_dir() const noexcept { return _run_dir; }
 
   /**
-   * @brief Get the configuration options for Bitlog.
-   * @return Bitlog configuration options.
+   * @brief Get the options for Bitlog.
+   * @return Bitlog options.
    */
-  [[nodiscard]] frontend_options_t const& config() const noexcept { return _config; }
+  [[nodiscard]] frontend_options_t const& options() const noexcept { return _options; }
 
 private:
   std::filesystem::path _run_dir;
-  frontend_options_t _config;
+  frontend_options_t _options;
 };
 
 /**
  * @brief Singleton class for Bitlog, providing initialization and access to BitlogManager.
- *
- * @tparam TFrontendOptions The configuration type for Bitlog.
  */
 template <typename TFrontendOptions>
 class Frontend
@@ -131,11 +127,11 @@ public:
    * @brief Initialize the Bitlog singleton.
    *
    * @param application_id Identifier for the application.
-   * @param config Configuration options for Bitlog.
+   * @param options optionsuration options for Bitlog.
    * @param base_dir Base directory path.
    * @return True if initialization is successful, false otherwise.
    */
-  static bool init(std::string_view application_id, frontend_options_t config = frontend_options_t{},
+  static bool init(std::string_view application_id, frontend_options_t options = frontend_options_t{},
                    std::string_view base_dir = std::string_view{})
   {
     if (!detail::initialise_frontend_once())
@@ -144,14 +140,13 @@ public:
     }
 
     // Set up the singleton
-    _instance.reset(new Frontend<frontend_options_t>(application_id, std::move(config), base_dir));
+    _instance.reset(new Frontend<frontend_options_t>(application_id, std::move(options), base_dir));
 
     return true;
   }
 
   /**
    * @brief Get the instance of the Bitlog singleton.
-   *
    * @return Reference to the Bitlog singleton instance.
    */
   [[nodiscard]] static Frontend<frontend_options_t>& instance() noexcept
@@ -188,17 +183,17 @@ public:
   }
 
   /**
-   * @brief Get the configuration options for Bitlog.
-   * @return Bitlog configuration options.
+   * @brief Get the optionsuration options for Bitlog.
+   * @return Bitlog optionsuration options.
    */
-  [[nodiscard]] frontend_options_t const& config() const noexcept
+  [[nodiscard]] frontend_options_t const& options() const noexcept
   {
-    return _frontend_manager.config();
+    return _frontend_manager.options();
   }
 
 private:
-  Frontend(std::string_view application_id, frontend_options_t config, std::string_view base_dir)
-    : _frontend_manager(application_id, std::move(config), base_dir){};
+  Frontend(std::string_view application_id, frontend_options_t options, std::string_view base_dir)
+    : _frontend_manager(application_id, std::move(options), base_dir){};
   static inline std::unique_ptr<Frontend<frontend_options_t>> _instance;
   FrontendManager<frontend_options_t> _frontend_manager;
 };
