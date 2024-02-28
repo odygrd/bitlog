@@ -5,7 +5,7 @@
 #include "bitlog/frontend/frontend_impl.h"
 
 using frontend_options_t = bitlog::FrontendOptions<bitlog::QueueType::BoundedBlocking, true>;
-using bitlogfrontend_manager_t = bitlog::FrontendManager<frontend_options_t>;
+using frontend_manager_t = bitlog::FrontendManager<frontend_options_t>;
 
 TEST_SUITE_BEGIN("MetadataFiles");
 
@@ -18,12 +18,11 @@ TEST_CASE("create_read_log_statement_metadata")
   }
 
   // Write all metadata to a file
-  bitlogfrontend_manager_t bitlogfrontend_manager{"create_read_log_statement_metadata_test"};
-  bitlog::detail::create_log_statements_metadata_file(bitlogfrontend_manager.run_dir());
+  frontend_manager_t frontend_manager{"create_read_log_statement_metadata_test"};
 
   // Read the file
   auto const [log_statements_metadata_vec, process_id] =
-    bitlog::detail::read_log_statement_metadata_file(bitlogfrontend_manager.run_dir());
+    bitlog::detail::read_log_statement_metadata_file(frontend_manager.run_dir());
 
   REQUIRE_EQ(process_id, std::to_string(::getpid()));
   REQUIRE_EQ(log_statements_metadata_vec.size(), 3);
@@ -54,44 +53,39 @@ TEST_CASE("create_read_log_statement_metadata")
   REQUIRE_EQ(log_statements_metadata_vec[2].file, "test_macro_metadata.cpp");
   REQUIRE_EQ(log_statements_metadata_vec[2].type_descriptors.size(), 0);
 
-  std::filesystem::remove_all(bitlogfrontend_manager.application_dir());
+  std::filesystem::remove_all(frontend_manager.application_dir());
 }
 
 TEST_CASE("create_read_loggers_metadata")
 {
-  bitlogfrontend_manager_t bitlogfrontend_manager{"create_read_loggers_metadata_test"};
-  bitlog::detail::create_log_statements_metadata_file(bitlogfrontend_manager.run_dir());
+  frontend_manager_t frontend_manager{"create_read_loggers_metadata_test"};
 
-  // File doesn't exist
+  // File has no loggers yet
   std::vector<bitlog::detail::LoggerMetadata> logger_metadata;
-  logger_metadata = bitlog::detail::read_loggers_metadata_file(bitlogfrontend_manager.run_dir());
+  logger_metadata = bitlog::detail::read_loggers_metadata_file(frontend_manager.run_dir());
   REQUIRE_EQ(logger_metadata.size(), 0);
 
-  // Create the file
-  bitlog::detail::create_loggers_metadata_file(bitlogfrontend_manager.run_dir());
-
   // Check loggers
-  logger_metadata = bitlog::detail::read_loggers_metadata_file(bitlogfrontend_manager.run_dir());
+  logger_metadata = bitlog::detail::read_loggers_metadata_file(frontend_manager.run_dir());
   REQUIRE_EQ(logger_metadata.size(), 0);
 
   // Append a logger
-  bitlog::detail::append_loggers_metadata_file(bitlogfrontend_manager.run_dir(), 0, "logger_main");
+  bitlog::detail::append_loggers_metadata_file(frontend_manager.run_dir(), 0, "logger_main");
 
   // Check loggers
-  logger_metadata = bitlog::detail::read_loggers_metadata_file(bitlogfrontend_manager.run_dir());
+  logger_metadata = bitlog::detail::read_loggers_metadata_file(frontend_manager.run_dir());
   REQUIRE_EQ(logger_metadata.size(), 1);
   REQUIRE_EQ(logger_metadata[0].name, "logger_main");
 
   // Append another logger
-  bitlog::detail::append_loggers_metadata_file(bitlogfrontend_manager.run_dir(), 1,
-                                               "another_logger");
+  bitlog::detail::append_loggers_metadata_file(frontend_manager.run_dir(), 1, "another_logger");
 
   // Check loggers
-  logger_metadata = bitlog::detail::read_loggers_metadata_file(bitlogfrontend_manager.run_dir());
+  logger_metadata = bitlog::detail::read_loggers_metadata_file(frontend_manager.run_dir());
   REQUIRE_EQ(logger_metadata.size(), 2);
   REQUIRE_EQ(logger_metadata[0].name, "logger_main");
   REQUIRE_EQ(logger_metadata[1].name, "another_logger");
 
-  std::filesystem::remove_all(bitlogfrontend_manager.application_dir());
+  std::filesystem::remove_all(frontend_manager.application_dir());
 }
 TEST_SUITE_END();

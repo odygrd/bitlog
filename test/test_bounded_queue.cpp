@@ -6,7 +6,7 @@
 #include "bitlog/frontend.h"
 
 using frontend_options_t = bitlog::FrontendOptions<bitlog::QueueType::BoundedBlocking, true>;
-using bitlogfrontend_manager_t = bitlog::FrontendManager<frontend_options_t>;
+using frontend_manager_t = bitlog::FrontendManager<frontend_options_t>;
 
 TEST_SUITE_BEGIN("BoundedQueue");
 
@@ -67,16 +67,14 @@ void bounded_queue_read_write_test(std::filesystem::path const& path)
 
 TEST_CASE("bounded_queue_read_write_1")
 {
-  bitlogfrontend_manager_t bitlogfrontend_manager{"bounded_queue_read_write_1"};
-  bounded_queue_read_write_test<bitlog::detail::BoundedQueueImpl<uint16_t, false>>(
-    bitlogfrontend_manager.run_dir());
+  frontend_manager_t frontend_manager{"bounded_queue_read_write_1"};
+  bounded_queue_read_write_test<bitlog::detail::BoundedQueueImpl<uint16_t, false>>(frontend_manager.run_dir());
 }
 
 TEST_CASE("bounded_queue_read_write_2")
 {
-  bitlogfrontend_manager_t bitlogfrontend_manager{"bounded_queue_read_write_2"};
-  bounded_queue_read_write_test<bitlog::detail::BoundedQueueImpl<uint16_t, true>>(
-    bitlogfrontend_manager.run_dir());
+  frontend_manager_t frontend_manager{"bounded_queue_read_write_2"};
+  bounded_queue_read_write_test<bitlog::detail::BoundedQueueImpl<uint16_t, true>>(frontend_manager.run_dir());
 }
 
 template <typename TQueue>
@@ -179,14 +177,14 @@ void bounded_queue_read_write_threads(std::filesystem::path const& path)
 
 TEST_CASE("bounded_queue_read_write_threads_1")
 {
-  bitlogfrontend_manager_t bitlogfrontend_manager{"bounded_queue_read_write_threads_1"};
-  bounded_queue_read_write_threads<bitlog::detail::BoundedQueue>(bitlogfrontend_manager.run_dir());
+  frontend_manager_t frontend_manager{"bounded_queue_read_write_threads_1"};
+  bounded_queue_read_write_threads<bitlog::detail::BoundedQueue>(frontend_manager.run_dir());
 }
 
 TEST_CASE("bounded_queue_read_write_threads_2")
 {
-  bitlogfrontend_manager_t bitlogfrontend_manager{"bounded_queue_read_write_threads_2"};
-  bounded_queue_read_write_threads<bitlog::detail::BoundedQueueX86>(bitlogfrontend_manager.run_dir());
+  frontend_manager_t frontend_manager{"bounded_queue_read_write_threads_2"};
+  bounded_queue_read_write_threads<bitlog::detail::BoundedQueueX86>(frontend_manager.run_dir());
 }
 
 TEST_SUITE_END();

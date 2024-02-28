@@ -7,6 +7,7 @@
 #include <atomic>
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <span>
 #include <string_view>
 #include <utility>
@@ -63,7 +64,7 @@ struct MacroMetadata
  * @return Reference to the macro metadata.
  */
 template <StringLiteral File, StringLiteral Function, uint32_t Line, LogLevel Level, StringLiteral LogFormat, typename... Args>
-[[nodiscard]] MacroMetadata const& make_macro_metadata() noexcept
+[[nodiscard]] MacroMetadata const& get_macro_metadata() noexcept
 {
   static constexpr std::array<TypeDescriptorName, sizeof...(Args)> type_descriptors{
     GetTypeDescriptor<Args>::value...};
@@ -106,20 +107,63 @@ struct MacroMetadataNode : public UniqueId<MacroMetadataNode>
  * @brief Template instance for macro metadata node initialization.
  */
 template <StringLiteral File, StringLiteral Function, uint32_t Line, LogLevel Level, StringLiteral LogFormat, typename... Args>
-MacroMetadataNode marco_metadata_node{make_macro_metadata<File, Function, Line, Level, LogFormat, Args...>()};
+MacroMetadataNode marco_metadata_node{get_macro_metadata<File, Function, Line, Level, LogFormat, Args...>()};
+
+/**
+ * @brief Creates a run directory for the given application.
+ *
+ * Creates a run directory using the specified application ID and base directory.
+ *
+ * @param application_id The ID of the application.
+ * @param base_dir The base directory where the run directory will be created. If empty, system defaults are used.
+ * @return An optional containing the created run directory path on success, or std::nullopt on failure.
+ */
+[[nodiscard]] std::optional<std::filesystem::path> inline create_run_directory(
+  std::string_view application_id, std::string_view base_dir = std::string_view{}) noexcept
+{
+  auto const now = std::chrono::system_clock::now().time_since_epoch();
+
+  std::error_code ec{};
+  std::filesystem::path const run_dir_base =
+    base_dir.empty() ? (std::filesystem::exists("/dev/shm", ec) ? "/dev/shm" : "/tmp") : base_dir;
+
+  if (ec)
+  {
+    return std::nullopt;
+  }
+
+  // non-const for RVO
+  std::filesystem::path run_dir = run_dir_base / application_id /
+    std::to_string(std::chrono::duration_cast<std::chrono::nanoseconds>(now).count());
+
+  if (std::filesystem::exists(run_dir, ec) || ec)
+  {
+    return std::nullopt;
+  }
+
+  std::filesystem::create_directories(run_dir, ec);
+
+  if (ec)
+  {
+    return std::nullopt;
+  }
+
+  return run_dir;
+}
 
 /**
  * @brief Writes log statement metadata information to a YAML file.
  *
  * @param path The path where the file will be written.
+ * @return True when the file was successfully created, false otherwise
  */
-void inline create_log_statements_metadata_file(std::filesystem::path const& path) noexcept
+[[nodiscard]] bool inline create_log_statements_metadata_file(std::filesystem::path const& path) noexcept
 {
   MetadataFile metadata_writer;
 
   if (!metadata_writer.init_writer(path / LOG_STATEMENTS_METADATA_FILENAME))
   {
-    return;
+    return false;
   }
 
   // First write some generic key/values
@@ -128,14 +172,14 @@ void inline create_log_statements_metadata_file(std::filesystem::path const& pat
   std::error_code ec;
   if (!metadata_writer.write(file_data.data(), file_data.size(), ec))
   {
-    std::abort();
+    return false;
   }
 
   // Then write all log statement metadata
   file_data = "log_statements:\n";
   if (!metadata_writer.write(file_data.data(), file_data.size(), ec))
   {
-    std::abort();
+    return false;
   }
 
   // Store them in a vector to write them in reverse. It doesn't make difference just makes
@@ -187,23 +231,26 @@ void inline create_log_statements_metadata_file(std::filesystem::path const& pat
 
     if (!metadata_writer.write(file_data.data(), file_data.size(), ec))
     {
-      std::abort();
+      return false;
     }
   }
+
+  return true;
 }
 
 /**
  * @brief Writes loggers metadata information to a YAML file.
  *
  * @param path The path where the file will be written.
+ * @return True when the file was successfully created, false otherwise
  */
-void inline create_loggers_metadata_file(std::filesystem::path const& path) noexcept
+[[nodiscard]] bool inline create_loggers_metadata_file(std::filesystem::path const& path) noexcept
 {
   MetadataFile metadata_writer;
 
   if (!metadata_writer.init_writer(path / LOGGERS_METADATA_FILENAME))
   {
-    return;
+    return false;
   }
 
   // First write some generic key/values
@@ -212,8 +259,10 @@ void inline create_loggers_metadata_file(std::filesystem::path const& path) noex
   std::error_code ec;
   if (!metadata_writer.write(file_data.data(), file_data.size(), ec))
   {
-    std::abort();
+    return false;
   }
+
+  return true;
 }
 
 /**
@@ -281,7 +330,7 @@ private:
  * created for the same thread.
  */
 template <typename FrontendOptions>
-ThreadContext<FrontendOptions>& thread_context(FrontendOptions const& options) noexcept
+ThreadContext<FrontendOptions>& get_thread_context(FrontendOptions const& options) noexcept
 {
   thread_local ThreadContext<FrontendOptions> thread_context{options};
   return thread_context;
