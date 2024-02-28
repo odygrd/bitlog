@@ -23,7 +23,7 @@ enum class QueueType
 };
 
 /**
- * @brief Structure representing configuration options for Bitlog.
+ * @brief Structure representing configuration options for the frontend.
  *
  * @tparam QueueOption The type of queue to be used.
  * @tparam UseCustomMemcpyX86 Boolean indicating whether to use a custom memcpy implementation for x86.
@@ -180,7 +180,7 @@ private:
 };
 
 /**
- * @brief Manager class for Bitlog
+ * @brief Manager class for the frontend
  */
 template <typename TFrontendOptions>
 class FrontendManager
@@ -189,9 +189,9 @@ public:
   using frontend_options_t = TFrontendOptions;
 
   /**
-   * @brief Explicit constructor for BitlogManager.
+   * @brief Explicit constructor for FrontendManager.
    * @param application_id Identifier for the application.
-   * @param options Options for Bitlog.
+   * @param options Options for the frontend.
    * @param base_dir Base directory path.
    */
   explicit FrontendManager(std::string_view application_id, frontend_options_t options = frontend_options_t{},
@@ -243,8 +243,8 @@ public:
   [[nodiscard]] std::filesystem::path const& run_dir() const noexcept { return _run_dir; }
 
   /**
-   * @brief Get the options for Bitlog.
-   * @return Bitlog options.
+   * @brief Get the options for frontend
+   * @return frontend options.
    */
   [[nodiscard]] frontend_options_t const& options() const noexcept { return _options; }
 
@@ -254,7 +254,7 @@ private:
 };
 
 /**
- * @brief Singleton class for Bitlog, providing initialization and access to BitlogManager.
+ * @brief Singleton class for the frontend, providing initialization and access to FrontendManager.
  */
 template <typename TFrontendOptions>
 class Frontend
@@ -263,10 +263,10 @@ public:
   using frontend_options_t = TFrontendOptions;
 
   /**
-   * @brief Initialize the Bitlog singleton.
+   * @brief Initialize the Frontend singleton.
    *
    * @param application_id Identifier for the application.
-   * @param options optionsuration options for Bitlog.
+   * @param options configuration options for the frontend.
    * @param base_dir Base directory path.
    * @return True if initialization is successful, false otherwise.
    */
@@ -285,8 +285,8 @@ public:
   }
 
   /**
-   * @brief Get the instance of the Bitlog singleton.
-   * @return Reference to the Bitlog singleton instance.
+   * @brief Get the instance of the Frontend singleton.
+   * @return Reference to the Frontend singleton instance.
    */
   [[nodiscard]] static Frontend<frontend_options_t>& instance() noexcept
   {
@@ -322,8 +322,8 @@ public:
   }
 
   /**
-   * @brief Get the optionsuration options for Bitlog.
-   * @return Bitlog optionsuration options.
+   * @brief Get the configuration options for the frontend.
+   * @return Frontend configuration options.
    */
   [[nodiscard]] frontend_options_t const& options() const noexcept
   {
