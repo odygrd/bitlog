@@ -205,17 +205,9 @@ private:
   std::FILE* _file{nullptr};
 };
 
-/**
- * Initialises once, intended for use with templated classes.
- * This function ensures that the initialization is performed only once,
- * even when instantiated with different template parameters.
- * @return true if initialization is performed, false otherwise.
- */
-[[nodiscard]] bool initialise_frontend_once()
+[[nodiscard]] inline std::filesystem::path resolve_base_dir(std::error_code& ec,
+                                                            std::string_view base_dir = std::string_view{}) noexcept
 {
-  static std::once_flag once_flag;
-  bool init_called{false};
-  std::call_once(once_flag, [&init_called]() mutable { init_called = true; });
-  return init_called;
+  return base_dir.empty() ? (std::filesystem::exists("/dev/shm", ec) ? "/dev/shm" : "/tmp") : base_dir;
 }
 } // namespace bitlog::detail

@@ -18,6 +18,24 @@
 
 namespace bitlog
 {
+
+namespace detail
+{
+/**
+ * Initialises once, intended for use with templated classes.
+ * This function ensures that the initialization is performed only once,
+ * even when instantiated with different template parameters.
+ * @return true if initialization is performed, false otherwise.
+ */
+[[nodiscard]] bool initialise_frontend_once()
+{
+  static std::once_flag once_flag;
+  bool init_called{false};
+  std::call_once(once_flag, [&init_called]() mutable { init_called = true; });
+  return init_called;
+}
+} // namespace detail
+
 enum class QueuePolicyOption
 {
   BoundedDropping,

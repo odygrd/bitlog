@@ -2,7 +2,7 @@
 
 #include "bitlog/frontend/frontend_impl.h"
 
-TEST_SUITE_BEGIN("MacroMetadata");
+TEST_SUITE_BEGIN("FrontendMacroMetadata");
 
 TEST_CASE("macro_metadata_node")
 {

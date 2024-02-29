@@ -20,6 +20,8 @@ TEST_CASE("initialise_frontend_singleton")
   REQUIRE(
     frontend_t::instance().run_dir().parent_path().string().ends_with("frontend_singleton_test"));
   REQUIRE(frontend_t::instance().application_dir().string().ends_with("frontend_singleton_test"));
+
+  std::filesystem::remove_all(frontend_t::instance().application_dir());
 }
 
 TEST_SUITE_END();

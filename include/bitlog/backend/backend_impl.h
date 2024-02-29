@@ -299,4 +299,82 @@ std::vector<LoggerMetadata> inline read_loggers_metadata_file(std::filesystem::p
 
   return ret_val;
 }
+
+/**
+ * @brief Discovers and populates a vector with thread queues found in the specified directory.
+ *
+ * The function looks for ".ready" files, such as "0.0.ready" or "1.0.ready," representing
+ * thread number and sequence information. The discovered thread queues are sorted and added to
+ * the provided vector.
+ *
+ * @param run_dir The path to the directory containing thread queue files.
+ * @param thread_queues_vec A vector to store discovered thread queue information.
+ *        Each element is a pair representing thread number and sequence.
+ * @param ec An output parameter for error codes.
+ * @return `true` if the discovery process is successful, `false` otherwise.
+ *         If an error occurs, the error code is set in the `ec` parameter.
+ */
+[[nodiscard]] bool discover_queues(std::filesystem::path const& run_dir,
+                                   std::vector<std::pair<uint32_t, uint32_t>>& thread_queues_vec,
+                                   std::error_code& ec)
+{
+  thread_queues_vec.clear();
+
+  auto run_dir_it = std::filesystem::directory_iterator(run_dir, ec);
+
+  if (ec && ec != std::errc::no_such_file_or_directory)
+  {
+    return false;
+  }
+
+  for (auto const& file_entry : run_dir_it)
+  {
+    // Look into all the files under the current run directory
+    if (!file_entry.is_regular_file()) [[unlikely]]
+    {
+      // should never happen but just in case
+      continue;
+    }
+
+    // look for .ready files, e.g 0.0.ready, 1.0.ready (thread_num.sequence.ready)
+    if (file_entry.path().extension() == ".ready")
+    {
+      // e.g. 0.0 for a file 0.0.ready
+      std::string const file_stem = file_entry.path().stem().string();
+      size_t const dot_position = file_stem.find('.');
+
+      std::string_view const thread_num_str{file_stem.data(), dot_position};
+      uint32_t thread_num;
+      auto [ptr1, fec1] = std::from_chars(
+        thread_num_str.data(), thread_num_str.data() + thread_num_str.length(), thread_num);
+
+      if ((fec1 == std::errc::invalid_argument) || (fec1 == std::errc::result_out_of_range))
+      {
+        ec = std::make_error_code(fec1);
+        return false;
+      }
+
+      std::string_view const sequence_str{file_stem.data() + dot_position + 1,
+                                          file_stem.size() - dot_position - 1};
+      uint32_t sequence;
+      auto [ptr2, fec2] =
+        std::from_chars(sequence_str.data(), sequence_str.data() + sequence_str.length(), sequence);
+
+      if ((fec2 == std::errc::invalid_argument) || (fec2 == std::errc::result_out_of_range))
+      {
+        ec = std::make_error_code(fec2);
+        return false;
+      }
+
+      auto insertion_point = std::lower_bound(
+        std::begin(thread_queues_vec), std::end(thread_queues_vec),
+        std::make_pair(thread_num, sequence), [](const auto& lhs, const auto& rhs)
+        { return lhs.first < rhs.first || (lhs.first == rhs.first && lhs.second < rhs.second); });
+
+      thread_queues_vec.insert(insertion_point, std::make_pair(thread_num, sequence));
+    }
+  }
+
+  return true;
+}
 } // namespace bitlog::detail

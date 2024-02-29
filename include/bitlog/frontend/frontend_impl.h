@@ -104,7 +104,7 @@ struct MacroMetadataNode : public UniqueId<MacroMetadataNode>
 };
 
 /**
- * @brief Template instance for macro metadata node initialization.
+ * @brief Template instance for macro metadata node initialisation.
  */
 template <StringLiteral File, StringLiteral Function, uint32_t Line, LogLevel Level, StringLiteral LogFormat, typename... Args>
 MacroMetadataNode marco_metadata_node{get_macro_metadata<File, Function, Line, Level, LogFormat, Args...>()};
@@ -118,14 +118,13 @@ MacroMetadataNode marco_metadata_node{get_macro_metadata<File, Function, Line, L
  * @param base_dir The base directory where the run directory will be created. If empty, system defaults are used.
  * @return An optional containing the created run directory path on success, or std::nullopt on failure.
  */
-[[nodiscard]] std::optional<std::filesystem::path> inline create_run_directory(
+[[nodiscard]] inline std::optional<std::filesystem::path> create_run_directory(
   std::string_view application_id, std::string_view base_dir = std::string_view{}) noexcept
 {
   auto const now = std::chrono::system_clock::now().time_since_epoch();
 
   std::error_code ec{};
-  std::filesystem::path const run_dir_base =
-    base_dir.empty() ? (std::filesystem::exists("/dev/shm", ec) ? "/dev/shm" : "/tmp") : base_dir;
+  std::filesystem::path const run_dir_base = detail::resolve_base_dir(ec, base_dir);
 
   if (ec)
   {
