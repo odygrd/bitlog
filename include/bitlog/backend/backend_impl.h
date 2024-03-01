@@ -316,13 +316,17 @@ struct QueueInfo
   int lock_file_fd;
 };
 
-template <typename TQueue>
+template <typename TBackendOptions>
 class ThreadQueueManager
 {
 public:
-  explicit ThreadQueueManager(std::filesystem::path const& run_dir) : _run_dir(run_dir){};
+  using backend_options_t = TBackendOptions;
+  using queue_info_t = QueueInfo<typename backend_options_t::queue_type>;
 
-  [[nodiscard]] std::vector<QueueInfo<TQueue>> const& active_queues() const noexcept
+  ThreadQueueManager(std::filesystem::path const& run_dir, backend_options_t const& options)
+    : _run_dir(run_dir), _options(options){};
+
+  [[nodiscard]] std::vector<queue_info_t> const& active_queues() const noexcept
   {
     return _active_queues;
   }
@@ -356,7 +360,8 @@ public:
         // This means that the producer has moved to a new queue
         // we want to remove it and replace it with the next sequence queue
         it = _active_queues.erase(it);
-        if (!TQueue::remove_shm_files(fmtbitlog::format("{}.{}.ext", thread_num, sequence), _run_dir, ec))
+        if (!backend_options_t::queue_type::remove_shm_files(
+              fmtbitlog::format("{}.{}.ext", thread_num, sequence), _run_dir, ec))
         {
           // TODO:: handle error ?
         }
@@ -376,7 +381,8 @@ public:
         uint32_t const sequence = active_queue.sequence;
 
         it = _active_queues.erase(it);
-        if (!TQueue::remove_shm_files(fmtbitlog::format("{}.{}.ext", thread_num, sequence), _run_dir, ec))
+        if (!backend_options_t::queue_type::remove_shm_files(
+              fmtbitlog::format("{}.{}.ext", thread_num, sequence), _run_dir, ec))
         {
           // TODO:: handle error ?
         }
@@ -482,7 +488,7 @@ protected:
       // for the thread num is not enough
       auto current_active_queue_it = std::lower_bound(
         std::begin(_active_queues), std::end(_active_queues), thread_num,
-        [](QueueInfo<TQueue> const& lhs, uint32_t value) { return lhs.thread_num < value; });
+        [](queue_info_t const& lhs, uint32_t value) { return lhs.thread_num < value; });
 
       if ((current_active_queue_it == std::end(_active_queues)) ||
           (current_active_queue_it->thread_num != thread_num))
@@ -508,7 +514,7 @@ protected:
   [[nodiscard]] bool _insert_to_active_queues(uint32_t thread_num, uint32_t sequence)
   {
     std::filesystem::path const queue_path = _run_dir / fmtbitlog::format("{}.{}.lock", thread_num, sequence);
-    QueueInfo<TQueue> queue_info{thread_num, sequence, queue_path};
+    queue_info_t queue_info{thread_num, sequence, queue_path};
 
     if (queue_info.lock_file_fd == -1)
     {
@@ -518,8 +524,7 @@ protected:
 
     std::error_code ec;
 
-    // TODO: Fix memory page size config
-    if (!queue_info.queue->open(queue_path, MemoryPageSize::RegularPage, ec))
+    if (!queue_info.queue->open(queue_path, _options.memory_page_size, ec))
     {
       return false;
     }
@@ -562,8 +567,9 @@ protected:
   }
 
 private:
-  std::vector<QueueInfo<TQueue>> _active_queues;
+  std::vector<queue_info_t> _active_queues;
   std::vector<std::pair<uint32_t, uint32_t>> _discovered_queues;
   std::filesystem::path const& _run_dir;
+  backend_options_t const& _options;
 };
 } // namespace bitlog::detail

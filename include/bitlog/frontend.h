@@ -43,12 +43,6 @@ enum class QueuePolicyOption
   UnboundedNoLimit
 };
 
-enum class QueueTypeOption
-{
-  Default,
-  X86Optimised
-};
-
 /**
  * @brief Structure representing configuration options for the frontend.
  *

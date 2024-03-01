@@ -1,16 +1,18 @@
 #include "bundled/doctest.h"
 
-#include "bitlog/backend/backend_impl.h"
+#include "bitlog/backend.h"
 #include "bitlog/common/common.h"
 
 #include <fstream>
 #include <iostream>
 
-template <typename TQueue>
-class ThreadQueueManagerMock : public bitlog::detail::ThreadQueueManager<TQueue>
+using backend_options_t =
+  bitlog::BackendOptions<bitlog::QueueTypeOption::Default>;
+
+class ThreadQueueManagerMock : public bitlog::detail::ThreadQueueManager<backend_options_t>
 {
 public:
-  using base_t = bitlog::detail::ThreadQueueManager<TQueue>;
+  using base_t = bitlog::detail::ThreadQueueManager<backend_options_t>;
   using base_t::base_t;
 
   [[nodiscard]] std::vector<std::pair<uint32_t, uint32_t>> const& get_discovered_queues() const noexcept
@@ -26,7 +28,7 @@ public:
   }
 };
 
-TEST_SUITE_BEGIN("BackendImpl");
+TEST_SUITE_BEGIN("ThreadQueueManager");
 
 TEST_CASE("discover_ready_queues")
 {
@@ -38,7 +40,7 @@ TEST_CASE("discover_ready_queues")
   std::filesystem::path const run_dir = application_dir / "1709170671490534294";
   std::filesystem::remove_all(application_dir);
 
-  ThreadQueueManagerMock<bitlog::detail::BoundedQueue> tqm{run_dir};
+  ThreadQueueManagerMock tqm{run_dir, backend_options_t {}};
 
   // First run on empty dir
   REQUIRE(tqm.discover_queues(ec));
@@ -98,7 +100,7 @@ TEST_CASE("discover_update_active_queues")
   // crete the run dir
   std::filesystem::create_directories(run_dir);
 
-  ThreadQueueManagerMock<bitlog::detail::BoundedQueue> tqm{run_dir};
+  ThreadQueueManagerMock tqm{run_dir, backend_options_t {}};
 
   // Check empty
   REQUIRE(tqm.discover_queues(ec));

@@ -11,6 +11,12 @@ enum MemoryPageSize : uint32_t
   HugePage1GB = 1024 * 1024 * 1024
 };
 
+enum class QueueTypeOption
+{
+  Default,
+  X86Optimised
+};
+
 /**
  * Represents log levels
  */
