@@ -529,7 +529,8 @@ void update_active_queue_infos(std::vector<QueueInfo<TQueue>>& active_thread_que
       }
       else if (lock_file(current_active_queue_it->lock_file_fd, ec))
       {
-        // if we can lock the lock file it means the producer process is not running anymore
+        // if we can lock the .lock file it means the producer process is not running anymore
+        unlock_file(current_active_queue_it->lock_file_fd, ec);
         active_thread_queues.erase(current_active_queue_it);
         if (!TQueue::remove_shm_files(fmtbitlog::format("{}.{}.ext", thread_num, sequence), run_dir, ec))
         {
