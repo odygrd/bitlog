@@ -156,7 +156,7 @@ MacroMetadataNode marco_metadata_node{get_macro_metadata<File, Function, Line, L
  * @param path The path where the file will be written.
  * @return True when the file was successfully created, false otherwise
  */
-[[nodiscard]] bool inline create_log_statements_metadata_file(std::filesystem::path const& path) noexcept
+[[nodiscard]] inline bool create_log_statements_metadata_file(std::filesystem::path const& path) noexcept
 {
   MetadataFile metadata_writer;
 
@@ -243,7 +243,7 @@ MacroMetadataNode marco_metadata_node{get_macro_metadata<File, Function, Line, L
  * @param path The path where the file will be written.
  * @return True when the file was successfully created, false otherwise
  */
-[[nodiscard]] bool inline create_loggers_metadata_file(std::filesystem::path const& path) noexcept
+[[nodiscard]] inline bool create_loggers_metadata_file(std::filesystem::path const& path) noexcept
 {
   MetadataFile metadata_writer;
 
@@ -270,7 +270,7 @@ MacroMetadataNode marco_metadata_node{get_macro_metadata<File, Function, Line, L
  * @param path The path where the file will be written.
  * @return True when the file was successfully created, false otherwise
  */
-[[nodiscard]] bool inline append_loggers_metadata_file(std::filesystem::path const& path, uint32_t logger_id,
+[[nodiscard]] inline bool append_loggers_metadata_file(std::filesystem::path const& path, uint32_t logger_id,
                                                        std::string const& logger_name) noexcept
 {
   MetadataFile metadata_writer;

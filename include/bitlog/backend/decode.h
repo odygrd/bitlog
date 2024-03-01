@@ -22,7 +22,7 @@ inline void decode_arg(uint8_t const*& buffer,
 {
   T value;
   std::memcpy(&value, buffer, sizeof(value));
-  fmt_args.emplace_back(fmtbitlog::detail::make_arg<fmtbitlog::format_context>(value));
+  fmt_args.push_back(fmtbitlog::detail::make_arg<fmtbitlog::format_context>(value));
   buffer += sizeof(value);
 }
 
@@ -37,7 +37,7 @@ inline void decode_string_arg(uint32_t length, uint8_t const*& buffer,
                               std::vector<fmtbitlog::basic_format_arg<fmtbitlog::format_context>>& fmt_args) noexcept
 {
   std::string_view const value{reinterpret_cast<char const*>(buffer), length};
-  fmt_args.emplace_back(fmtbitlog::detail::make_arg<fmtbitlog::format_context>(value));
+  fmt_args.push_back(fmtbitlog::detail::make_arg<fmtbitlog::format_context>(value));
   buffer += value.size();
 }
 

@@ -35,7 +35,7 @@ TEST_CASE("create_get_logger_and_log")
   logger->template log<__FILE_NAME__, __FUNCTION__, __LINE__, bitlog::LogLevel::Info,
                        "test log {} {} {}">(a, b, c);
 
- // std::filesystem::remove_all(frontend_manager.application_dir());
+  std::filesystem::remove_all(frontend_manager.application_dir());
 }
 
 TEST_SUITE_END();
