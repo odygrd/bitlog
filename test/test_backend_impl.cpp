@@ -6,6 +6,26 @@
 #include <fstream>
 #include <iostream>
 
+template <typename TQueue>
+class ThreadQueueManagerMock : public bitlog::detail::ThreadQueueManager<TQueue>
+{
+public:
+  using base_t = bitlog::detail::ThreadQueueManager<TQueue>;
+  using base_t::base_t;
+
+  [[nodiscard]] std::vector<std::pair<uint32_t, uint32_t>> const& get_discovered_queues() const noexcept
+  {
+    return this->_get_discovered_queues();
+  }
+
+  [[nodiscard]] bool discover_queues(std::error_code& ec) { return this->_discover_queues(ec); }
+
+  [[nodiscard]] std::optional<uint32_t> find_next_queue_sequence(uint32_t thread_num, uint32_t sequence)
+  {
+    return this->_find_next_sequence(thread_num, sequence);
+  }
+};
+
 TEST_SUITE_BEGIN("BackendImpl");
 
 TEST_CASE("discover_ready_queues")
@@ -18,23 +38,23 @@ TEST_CASE("discover_ready_queues")
   std::filesystem::path const run_dir = application_dir / "1709170671490534294";
   std::filesystem::remove_all(application_dir);
 
-  std::vector<std::pair<uint32_t, uint32_t>> ready_queues_vec;
+  ThreadQueueManagerMock<bitlog::detail::BoundedQueue> tqm{run_dir};
 
   // First run on empty dir
-  REQUIRE(bitlog::detail::discover_queues(run_dir, ready_queues_vec, ec));
-  REQUIRE(ready_queues_vec.empty());
+  REQUIRE(tqm.discover_queues(ec));
+  REQUIRE(tqm.get_discovered_queues().empty());
 
   // Add an empty application directory and retry
   std::filesystem::create_directory(application_dir);
-  REQUIRE(bitlog::detail::discover_queues(run_dir, ready_queues_vec, ec));
-  REQUIRE(ready_queues_vec.empty());
+  REQUIRE(tqm.discover_queues(ec));
+  REQUIRE(tqm.get_discovered_queues().empty());
 
   // Add an empty run directory and retry
   std::filesystem::create_directory(run_dir);
-  REQUIRE(bitlog::detail::discover_queues(run_dir, ready_queues_vec, ec));
-  REQUIRE(ready_queues_vec.empty());
+  REQUIRE(tqm.discover_queues(ec));
+  REQUIRE(tqm.get_discovered_queues().empty());
 
-  REQUIRE_EQ(bitlog::detail::find_next_queue_sequence(0, 0, ready_queues_vec), std::optional<uint32_t>{});
+  REQUIRE_EQ(tqm.find_next_queue_sequence(0, 0), std::optional<uint32_t>{});
 
   auto create_file = [&run_dir](std::string_view filename)
   {
@@ -49,27 +69,24 @@ TEST_CASE("discover_ready_queues")
   create_file("0.0.lock");
 
   // Check again - note .ready file is missing
-  REQUIRE(bitlog::detail::discover_queues(run_dir, ready_queues_vec, ec));
-  REQUIRE(ready_queues_vec.empty());
+  REQUIRE(tqm.discover_queues(ec));
+  REQUIRE(tqm.get_discovered_queues().empty());
 
   create_file("0.0.ready");
 
   // Check again after the .ready file
-  REQUIRE(bitlog::detail::discover_queues(run_dir, ready_queues_vec, ec));
-  REQUIRE_EQ(ready_queues_vec.size(), 1);
-  REQUIRE_EQ(ready_queues_vec[0].first, 0);
-  REQUIRE_EQ(ready_queues_vec[0].second, 0);
+  REQUIRE(tqm.discover_queues(ec));
+  REQUIRE_EQ(tqm.get_discovered_queues().size(), 1);
+  REQUIRE_EQ(tqm.get_discovered_queues()[0].first, 0);
+  REQUIRE_EQ(tqm.get_discovered_queues()[0].second, 0);
 
-  REQUIRE_EQ(bitlog::detail::find_next_queue_sequence(0, 0, ready_queues_vec), std::optional<uint32_t>{});
+  REQUIRE_EQ(tqm.find_next_queue_sequence(0, 0), std::optional<uint32_t>{});
 
   std::filesystem::remove_all(application_dir);
 }
 
 TEST_CASE("discover_update_active_queues")
 {
-  using queue_info_t = bitlog::detail::QueueInfo<bitlog::detail::BoundedQueue>;
-  std::vector<queue_info_t> active_queues;
-
   std::error_code ec;
   std::filesystem::path const run_dir_base = bitlog::detail::resolve_base_dir(ec);
   REQUIRE_FALSE(ec);
@@ -81,150 +98,154 @@ TEST_CASE("discover_update_active_queues")
   // crete the run dir
   std::filesystem::create_directories(run_dir);
 
-  std::vector<std::pair<uint32_t, uint32_t>> ready_queues_vec;
+  ThreadQueueManagerMock<bitlog::detail::BoundedQueue> tqm{run_dir};
 
   // Check empty
-  REQUIRE(bitlog::detail::discover_queues(run_dir, ready_queues_vec, ec));
-  REQUIRE(ready_queues_vec.empty());
-
-  REQUIRE_EQ(bitlog::detail::find_next_queue_sequence(0, 0, ready_queues_vec), std::optional<uint32_t>{});
+  REQUIRE(tqm.discover_queues(ec));
+  REQUIRE(tqm.get_discovered_queues().empty());
+  REQUIRE_EQ(tqm.find_next_queue_sequence(0, 0), std::optional<uint32_t>{});
 
   // Create first queue
-  bitlog::detail::update_active_queue_infos(active_queues, ready_queues_vec, run_dir);
-  REQUIRE(active_queues.empty());
+  REQUIRE(tqm.discover_queues(ec));
+  REQUIRE(tqm.get_discovered_queues().empty());
 
   bitlog::detail::BoundedQueue queue_1;
-  REQUIRE(queue_1.create(run_dir / fmtbitlog::format("{}.{}.ext", 0, 0), 4096, bitlog::MemoryPageSize::RegularPage, 5, ec));
+  REQUIRE(queue_1.create(run_dir / fmtbitlog::format("{}.{}.ext", 0, 0), 4096,
+                         bitlog::MemoryPageSize::RegularPage, 5, ec));
 
   // Check
-  REQUIRE(bitlog::detail::discover_queues(run_dir, ready_queues_vec, ec));
-  REQUIRE_EQ(ready_queues_vec.size(), 1);
-  REQUIRE_EQ(ready_queues_vec[0].first, 0);
-  REQUIRE_EQ(ready_queues_vec[0].second, 0);
+  REQUIRE(tqm.discover_queues(ec));
+  REQUIRE_EQ(tqm.get_discovered_queues().size(), 1);
+  REQUIRE_EQ(tqm.get_discovered_queues()[0].first, 0);
+  REQUIRE_EQ(tqm.get_discovered_queues()[0].second, 0);
 
-  REQUIRE_EQ(bitlog::detail::find_next_queue_sequence(0, 0, ready_queues_vec), std::optional<uint32_t>{});
+  REQUIRE_EQ(tqm.find_next_queue_sequence(0, 0), std::optional<uint32_t>{});
 
-  bitlog::detail::update_active_queue_infos(active_queues, ready_queues_vec, run_dir);
-  REQUIRE_EQ(active_queues.size(), 1);
-  REQUIRE_EQ(active_queues[0].thread_num, 0);
-  REQUIRE_EQ(active_queues[0].sequence, 0);
+  tqm.update_active_queues();
+  REQUIRE_EQ(tqm.active_queues().size(), 1);
+  REQUIRE_EQ(tqm.active_queues()[0].thread_num, 0);
+  REQUIRE_EQ(tqm.active_queues()[0].sequence, 0);
 
   // Add another queue different thread
   bitlog::detail::BoundedQueue queue_2;
-  REQUIRE(queue_2.create(run_dir / fmtbitlog::format("{}.{}.ext", 1, 0), 4096, bitlog::MemoryPageSize::RegularPage, 5, ec));
+  REQUIRE(queue_2.create(run_dir / fmtbitlog::format("{}.{}.ext", 1, 0), 4096,
+                         bitlog::MemoryPageSize::RegularPage, 5, ec));
 
   // Check again
-  REQUIRE(bitlog::detail::discover_queues(run_dir, ready_queues_vec, ec));
-  REQUIRE_EQ(ready_queues_vec.size(), 2);
-  REQUIRE_EQ(ready_queues_vec[0].first, 0);
-  REQUIRE_EQ(ready_queues_vec[0].second, 0);
-  REQUIRE_EQ(ready_queues_vec[1].first, 1);
-  REQUIRE_EQ(ready_queues_vec[1].second, 0);
+  REQUIRE(tqm.discover_queues(ec));
+  REQUIRE_EQ(tqm.get_discovered_queues().size(), 2);
+  REQUIRE_EQ(tqm.get_discovered_queues()[0].first, 0);
+  REQUIRE_EQ(tqm.get_discovered_queues()[0].second, 0);
+  REQUIRE_EQ(tqm.get_discovered_queues()[1].first, 1);
+  REQUIRE_EQ(tqm.get_discovered_queues()[1].second, 0);
 
-  REQUIRE_EQ(bitlog::detail::find_next_queue_sequence(0, 0, ready_queues_vec), std::optional<uint32_t>{});
-  REQUIRE_EQ(bitlog::detail::find_next_queue_sequence(1, 0, ready_queues_vec), std::optional<uint32_t>{});
+  REQUIRE_EQ(tqm.find_next_queue_sequence(0, 0), std::optional<uint32_t>{});
+  REQUIRE_EQ(tqm.find_next_queue_sequence(1, 0), std::optional<uint32_t>{});
 
-  bitlog::detail::update_active_queue_infos(active_queues, ready_queues_vec, run_dir);
-  REQUIRE_EQ(active_queues.size(), 2);
-  REQUIRE_EQ(active_queues[0].thread_num, 0);
-  REQUIRE_EQ(active_queues[0].sequence, 0);
-  REQUIRE_EQ(active_queues[1].thread_num, 1);
-  REQUIRE_EQ(active_queues[1].sequence, 0);
+  tqm.update_active_queues();
+  REQUIRE_EQ(tqm.active_queues().size(), 2);
+  REQUIRE_EQ(tqm.active_queues()[0].thread_num, 0);
+  REQUIRE_EQ(tqm.active_queues()[0].sequence, 0);
+  REQUIRE_EQ(tqm.active_queues()[1].thread_num, 1);
+  REQUIRE_EQ(tqm.active_queues()[1].sequence, 0);
 
   // Add another queue with a new sequence, previous thread
   bitlog::detail::BoundedQueue queue_3;
-  REQUIRE(queue_3.create(run_dir / fmtbitlog::format("{}.{}.ext", 0, 1), 4096, bitlog::MemoryPageSize::RegularPage, 5, ec));
+  REQUIRE(queue_3.create(run_dir / fmtbitlog::format("{}.{}.ext", 0, 1), 4096,
+                         bitlog::MemoryPageSize::RegularPage, 5, ec));
 
   // Check again
-  REQUIRE(bitlog::detail::discover_queues(run_dir, ready_queues_vec, ec));
-  REQUIRE_EQ(ready_queues_vec.size(), 3);
-  REQUIRE_EQ(ready_queues_vec[0].first, 0);
-  REQUIRE_EQ(ready_queues_vec[0].second, 0);
-  REQUIRE_EQ(ready_queues_vec[1].first, 0);
-  REQUIRE_EQ(ready_queues_vec[1].second, 1);
-  REQUIRE_EQ(ready_queues_vec[2].first, 1);
-  REQUIRE_EQ(ready_queues_vec[2].second, 0);
+  REQUIRE(tqm.discover_queues(ec));
+  REQUIRE_EQ(tqm.get_discovered_queues().size(), 3);
+  REQUIRE_EQ(tqm.get_discovered_queues()[0].first, 0);
+  REQUIRE_EQ(tqm.get_discovered_queues()[0].second, 0);
+  REQUIRE_EQ(tqm.get_discovered_queues()[1].first, 0);
+  REQUIRE_EQ(tqm.get_discovered_queues()[1].second, 1);
+  REQUIRE_EQ(tqm.get_discovered_queues()[2].first, 1);
+  REQUIRE_EQ(tqm.get_discovered_queues()[2].second, 0);
 
-  REQUIRE_EQ(bitlog::detail::find_next_queue_sequence(0, 0, ready_queues_vec).value(), 1);
+  REQUIRE_EQ(tqm.find_next_queue_sequence(0, 0), 1);
 
   // Active queues should only contain two queues, one for each thread
-  bitlog::detail::update_active_queue_infos(active_queues, ready_queues_vec, run_dir);
-  REQUIRE_EQ(active_queues.size(), 2);
-  REQUIRE_EQ(active_queues[0].thread_num, 0);
-  REQUIRE_EQ(active_queues[0].sequence, 1);
-  REQUIRE_EQ(active_queues[1].thread_num, 1);
-  REQUIRE_EQ(active_queues[1].sequence, 0);
+  tqm.update_active_queues();
+  REQUIRE_EQ(tqm.active_queues().size(), 2);
+  REQUIRE_EQ(tqm.active_queues()[0].thread_num, 0);
+  REQUIRE_EQ(tqm.active_queues()[0].sequence, 1);
+  REQUIRE_EQ(tqm.active_queues()[1].thread_num, 1);
+  REQUIRE_EQ(tqm.active_queues()[1].sequence, 0);
 
   // Add another queue with a new sequence, previous thread
   bitlog::detail::BoundedQueue queue_4;
-  REQUIRE(queue_4.create(run_dir / fmtbitlog::format("{}.{}.ext", 0, 2), 4096, bitlog::MemoryPageSize::RegularPage, 5, ec));
+  REQUIRE(queue_4.create(run_dir / fmtbitlog::format("{}.{}.ext", 0, 2), 4096,
+                         bitlog::MemoryPageSize::RegularPage, 5, ec));
 
   // Check again
-  REQUIRE(bitlog::detail::discover_queues(run_dir, ready_queues_vec, ec));
-  REQUIRE_EQ(ready_queues_vec.size(), 3);
-  REQUIRE_EQ(ready_queues_vec[0].first, 0);
-  REQUIRE_EQ(ready_queues_vec[0].second, 1);
-  REQUIRE_EQ(ready_queues_vec[1].first, 0);
-  REQUIRE_EQ(ready_queues_vec[1].second, 2);
-  REQUIRE_EQ(ready_queues_vec[2].first, 1);
-  REQUIRE_EQ(ready_queues_vec[2].second, 0);
+  REQUIRE(tqm.discover_queues(ec));
+  REQUIRE_EQ(tqm.get_discovered_queues().size(), 3);
+  REQUIRE_EQ(tqm.get_discovered_queues()[0].first, 0);
+  REQUIRE_EQ(tqm.get_discovered_queues()[0].second, 1);
+  REQUIRE_EQ(tqm.get_discovered_queues()[1].first, 0);
+  REQUIRE_EQ(tqm.get_discovered_queues()[1].second, 2);
+  REQUIRE_EQ(tqm.get_discovered_queues()[2].first, 1);
+  REQUIRE_EQ(tqm.get_discovered_queues()[2].second, 0);
 
-  REQUIRE_EQ(bitlog::detail::find_next_queue_sequence(0, 1, ready_queues_vec).value(), 2);
-  REQUIRE_EQ(bitlog::detail::find_next_queue_sequence(0, 2, ready_queues_vec), std::optional<uint32_t>{});
-  REQUIRE_EQ(bitlog::detail::find_next_queue_sequence(1, 0, ready_queues_vec), std::optional<uint32_t>{});
+  REQUIRE_EQ(tqm.find_next_queue_sequence(0, 1), 2);
+  REQUIRE_EQ(tqm.find_next_queue_sequence(0, 2), std::optional<uint32_t>{});
+  REQUIRE_EQ(tqm.find_next_queue_sequence(1, 0), std::optional<uint32_t>{});
 
   // Active queues should only contain two queues, one for each thread
-  bitlog::detail::update_active_queue_infos(active_queues, ready_queues_vec, run_dir);
-  REQUIRE_EQ(active_queues.size(), 2);
-  REQUIRE_EQ(active_queues[0].thread_num, 0);
-  REQUIRE_EQ(active_queues[0].sequence, 2);
-  REQUIRE_EQ(active_queues[1].thread_num, 1);
-  REQUIRE_EQ(active_queues[1].sequence, 0);
+  tqm.update_active_queues();
+  REQUIRE_EQ(tqm.active_queues().size(), 2);
+  REQUIRE_EQ(tqm.active_queues()[0].thread_num, 0);
+  REQUIRE_EQ(tqm.active_queues()[0].sequence, 2);
+  REQUIRE_EQ(tqm.active_queues()[1].thread_num, 1);
+  REQUIRE_EQ(tqm.active_queues()[1].sequence, 0);
 
   // Check again
-  REQUIRE(bitlog::detail::discover_queues(run_dir, ready_queues_vec, ec));
-  REQUIRE_EQ(ready_queues_vec.size(), 2);
-  REQUIRE_EQ(ready_queues_vec[0].first, 0);
-  REQUIRE_EQ(ready_queues_vec[0].second, 2);
-  REQUIRE_EQ(ready_queues_vec[1].first, 1);
-  REQUIRE_EQ(ready_queues_vec[1].second, 0);
+  REQUIRE(tqm.discover_queues(ec));
+  REQUIRE_EQ(tqm.get_discovered_queues().size(), 2);
+  REQUIRE_EQ(tqm.get_discovered_queues()[0].first, 0);
+  REQUIRE_EQ(tqm.get_discovered_queues()[0].second, 2);
+  REQUIRE_EQ(tqm.get_discovered_queues()[1].first, 1);
+  REQUIRE_EQ(tqm.get_discovered_queues()[1].second, 0);
 
-  REQUIRE_EQ(bitlog::detail::find_next_queue_sequence(0, 2, ready_queues_vec), std::optional<uint32_t>{});
-  REQUIRE_EQ(bitlog::detail::find_next_queue_sequence(1, 0, ready_queues_vec), std::optional<uint32_t>{});
+  REQUIRE_EQ(tqm.find_next_queue_sequence(0, 2), std::optional<uint32_t>{});
+  REQUIRE_EQ(tqm.find_next_queue_sequence(1, 0), std::optional<uint32_t>{});
 
-  bitlog::detail::update_active_queue_infos(active_queues, ready_queues_vec, run_dir);
-  REQUIRE_EQ(active_queues.size(), 2);
-  REQUIRE_EQ(active_queues[0].thread_num, 0);
-  REQUIRE_EQ(active_queues[0].sequence, 2);
-  REQUIRE_EQ(active_queues[1].thread_num, 1);
-  REQUIRE_EQ(active_queues[1].sequence, 0);
+  tqm.update_active_queues();
+  REQUIRE_EQ(tqm.active_queues().size(), 2);
+  REQUIRE_EQ(tqm.active_queues()[0].thread_num, 0);
+  REQUIRE_EQ(tqm.active_queues()[0].sequence, 2);
+  REQUIRE_EQ(tqm.active_queues()[1].thread_num, 1);
+  REQUIRE_EQ(tqm.active_queues()[1].sequence, 0);
 
   // Add another queue different thread
   bitlog::detail::BoundedQueue queue_5;
-  REQUIRE(queue_5.create(run_dir / fmtbitlog::format("{}.{}.ext", 2, 0), 4096, bitlog::MemoryPageSize::RegularPage, 5, ec));
+  REQUIRE(queue_5.create(run_dir / fmtbitlog::format("{}.{}.ext", 2, 0), 4096,
+                         bitlog::MemoryPageSize::RegularPage, 5, ec));
 
   // Check again
-  REQUIRE(bitlog::detail::discover_queues(run_dir, ready_queues_vec, ec));
-  REQUIRE_EQ(ready_queues_vec.size(), 3);
-  REQUIRE_EQ(ready_queues_vec[0].first, 0);
-  REQUIRE_EQ(ready_queues_vec[0].second, 2);
-  REQUIRE_EQ(ready_queues_vec[1].first, 1);
-  REQUIRE_EQ(ready_queues_vec[1].second, 0);
-  REQUIRE_EQ(ready_queues_vec[2].first, 2);
-  REQUIRE_EQ(ready_queues_vec[2].second, 0);
+  REQUIRE(tqm.discover_queues(ec));
+  REQUIRE_EQ(tqm.get_discovered_queues().size(), 3);
+  REQUIRE_EQ(tqm.get_discovered_queues()[0].first, 0);
+  REQUIRE_EQ(tqm.get_discovered_queues()[0].second, 2);
+  REQUIRE_EQ(tqm.get_discovered_queues()[1].first, 1);
+  REQUIRE_EQ(tqm.get_discovered_queues()[1].second, 0);
+  REQUIRE_EQ(tqm.get_discovered_queues()[2].first, 2);
+  REQUIRE_EQ(tqm.get_discovered_queues()[2].second, 0);
 
-  REQUIRE_EQ(bitlog::detail::find_next_queue_sequence(0, 2, ready_queues_vec), std::optional<uint32_t>{});
-  REQUIRE_EQ(bitlog::detail::find_next_queue_sequence(1, 0, ready_queues_vec), std::optional<uint32_t>{});
-  REQUIRE_EQ(bitlog::detail::find_next_queue_sequence(2, 0, ready_queues_vec), std::optional<uint32_t>{});
+  REQUIRE_EQ(tqm.find_next_queue_sequence(0, 2), std::optional<uint32_t>{});
+  REQUIRE_EQ(tqm.find_next_queue_sequence(1, 0), std::optional<uint32_t>{});
+  REQUIRE_EQ(tqm.find_next_queue_sequence(2, 0), std::optional<uint32_t>{});
 
-  bitlog::detail::update_active_queue_infos(active_queues, ready_queues_vec, run_dir);
-  REQUIRE_EQ(active_queues.size(), 3);
-  REQUIRE_EQ(active_queues[0].thread_num, 0);
-  REQUIRE_EQ(active_queues[0].sequence, 2);
-  REQUIRE_EQ(active_queues[1].thread_num, 1);
-  REQUIRE_EQ(active_queues[1].sequence, 0);
-  REQUIRE_EQ(active_queues[2].thread_num, 2);
-  REQUIRE_EQ(active_queues[2].sequence, 0);
+  tqm.update_active_queues();
+  REQUIRE_EQ(tqm.active_queues().size(), 3);
+  REQUIRE_EQ(tqm.active_queues()[0].thread_num, 0);
+  REQUIRE_EQ(tqm.active_queues()[0].sequence, 2);
+  REQUIRE_EQ(tqm.active_queues()[1].thread_num, 1);
+  REQUIRE_EQ(tqm.active_queues()[1].sequence, 0);
+  REQUIRE_EQ(tqm.active_queues()[2].thread_num, 2);
+  REQUIRE_EQ(tqm.active_queues()[2].sequence, 0);
 
   std::filesystem::remove_all(application_dir);
 }

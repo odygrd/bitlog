@@ -301,114 +301,6 @@ inline std::vector<LoggerMetadata> read_loggers_metadata_file(std::filesystem::p
   return ret_val;
 }
 
-/**
- * @brief Discovers and populates a vector with thread queues found in the specified directory.
- *
- * The function looks for ".ready" files, such as "0.0.ready" or "1.0.ready," representing
- * thread number and sequence information. The discovered thread queues are sorted and added to
- * the provided vector.
- *
- * @param run_dir The path to the directory containing thread queue files.
- * @param ready_queues A vector to store discovered thread queue information.
- *        Each element is a pair representing thread number and sequence.
- * @param ec An output parameter for error codes.
- * @return `true` if the discovery process is successful, `false` otherwise.
- *         If an error occurs, the error code is set in the `ec` parameter.
- */
-[[nodiscard]] inline bool discover_queues(std::filesystem::path const& run_dir,
-                                          std::vector<std::pair<uint32_t, uint32_t>>& ready_queues,
-                                          std::error_code& ec)
-{
-  ready_queues.clear();
-
-  auto run_dir_it = std::filesystem::directory_iterator(run_dir, ec);
-
-  if (ec && ec != std::errc::no_such_file_or_directory)
-  {
-    return false;
-  }
-
-  for (auto const& file_entry : run_dir_it)
-  {
-    // Look into all the files under the current run directory
-    if (!file_entry.is_regular_file()) [[unlikely]]
-    {
-      // should never happen but just in case
-      continue;
-    }
-
-    // look for .ready files, e.g 0.0.ready, 1.0.ready (thread_num.sequence.ready)
-    if (file_entry.path().extension() == ".ready")
-    {
-      // e.g. 0.0 for a file 0.0.ready
-      std::string const file_stem = file_entry.path().stem().string();
-      size_t const dot_position = file_stem.find('.');
-
-      std::string_view const thread_num_str{file_stem.data(), dot_position};
-      uint32_t thread_num;
-      auto [ptr1, fec1] = std::from_chars(
-        thread_num_str.data(), thread_num_str.data() + thread_num_str.length(), thread_num);
-
-      if ((fec1 == std::errc::invalid_argument) || (fec1 == std::errc::result_out_of_range))
-      {
-        ec = std::make_error_code(fec1);
-        return false;
-      }
-
-      std::string_view const sequence_str{file_stem.data() + dot_position + 1,
-                                          file_stem.size() - dot_position - 1};
-      uint32_t sequence;
-      auto [ptr2, fec2] =
-        std::from_chars(sequence_str.data(), sequence_str.data() + sequence_str.length(), sequence);
-
-      if ((fec2 == std::errc::invalid_argument) || (fec2 == std::errc::result_out_of_range))
-      {
-        ec = std::make_error_code(fec2);
-        return false;
-      }
-
-      auto insertion_point = std::lower_bound(
-        std::begin(ready_queues), std::end(ready_queues), std::make_pair(thread_num, sequence), [](const auto& lhs, const auto& rhs)
-        { return lhs.first < rhs.first || (lhs.first == rhs.first && lhs.second < rhs.second); });
-
-      ready_queues.insert(insertion_point, std::make_pair(thread_num, sequence));
-    }
-  }
-
-  return true;
-}
-
-/**
- * @brief Finds the next sequence queue for the given thread and current sequence.
- *
- * This function performs a binary search in the sorted vector of thread queues to discover
- * the next sequence for the specified thread and sequence. If a next sequence is found,
- * it is returned; otherwise, std::nullopt is returned.
- *
- * @param thread_num The thread number.
- * @param sequence The current sequence.
- * @param ready_queues The vector of thread queues to search.
- * @return An optional containing the next sequence if found, or std::nullopt otherwise.
- */
-[[nodiscard]] inline std::optional<uint32_t> find_next_queue_sequence(
-  uint32_t thread_num, uint32_t sequence, std::vector<std::pair<uint32_t, uint32_t>> const& ready_queues)
-{
-  auto it = std::lower_bound(std::cbegin(ready_queues), std::cend(ready_queues),
-                             std::make_pair(thread_num, sequence), [](auto const& lhs, auto const& rhs)
-                             { return lhs.first == rhs.first && lhs.second < rhs.second; });
-
-  while (it != std::cend(ready_queues) && it->first == thread_num)
-  {
-    if (it->second > sequence)
-    {
-      return it->second;
-    }
-    ++it;
-  }
-
-  return std::nullopt;
-}
-
 template <typename TQueue>
 struct QueueInfo
 {
@@ -424,121 +316,254 @@ struct QueueInfo
   int lock_file_fd;
 };
 
-/**
- * @brief Creates and inserts a queue into the active_thread_queues vector.
- *
- * @param thread_num The thread number.
- * @param sequence The sequence number.
- * @param active_thread_queues The vector of active queues.
- * @param run_dir The directory path.
- * @return True if successful, false otherwise.
- */
 template <typename TQueue>
-[[nodiscard]] bool create_and_insert_queue_to_active_thread_queues(uint32_t thread_num, uint32_t sequence,
-                                                                   std::vector<QueueInfo<TQueue>>& active_thread_queues,
-                                                                   std::filesystem::path const& run_dir)
+class ThreadQueueManager
 {
-  std::filesystem::path const queue_path = run_dir / fmtbitlog::format("{}.{}.lock", thread_num, sequence);
-  QueueInfo<TQueue> queue_info{thread_num, sequence, queue_path};
+public:
+  explicit ThreadQueueManager(std::filesystem::path const& run_dir) : _run_dir(run_dir){};
 
-  if (queue_info.lock_file_fd == -1)
+  [[nodiscard]] std::vector<QueueInfo<TQueue>> const& active_queues() const noexcept
   {
-    // failed to open the lock file
-    return false;
+    return _active_queues;
   }
 
-  std::error_code ec;
-
-  // TODO: Fix memory page size config
-  if (!queue_info.queue->open(queue_path, MemoryPageSize::RegularPage, ec))
+  /**
+   * @brief Updates the information of active queues based on the ready queues.
+   */
+  void update_active_queues()
   {
-    return false;
-  }
-
-  auto insertion_point =
-    std::lower_bound(std::begin(active_thread_queues), std::end(active_thread_queues), thread_num,
-                     [](auto const& lhs, auto const& rhs) { return lhs.thread_num < rhs; });
-
-  active_thread_queues.insert(insertion_point, std::move(queue_info));
-
-  return true;
-}
-
-/**
- * @brief Updates the information of active queues based on the ready queues.
- *
- * @param active_thread_queues The vector of active queues.
- * @param ready_queues The vector of ready queues.
- * @param run_dir The directory path.
- */
-template <typename TQueue>
-void update_active_queue_infos(std::vector<QueueInfo<TQueue>>& active_thread_queues,
-                               std::vector<std::pair<uint32_t, uint32_t>> const& ready_queues,
-                               std::filesystem::path const& run_dir)
-{
-  uint32_t last_thread_num = std::numeric_limits<uint32_t>::max();
-
-  for (auto [thread_num, sequence] : ready_queues)
-  {
-    if (thread_num == last_thread_num)
-    {
-      // skip future sequences
-      continue;
-    }
-
-    last_thread_num = thread_num;
-
-    // See if we have that thread num in our active_thread_queues. We still need to do a find here
-    // as for example we can have e.g. active thread_num 0,1,2 queues. But when thread num 1
-    // finishes we will have 0,2 in our vector, therefore just using the index of the vector
-    // for the thread num is not enough
-    auto current_active_queue_it = std::lower_bound(
-      std::begin(active_thread_queues), std::end(active_thread_queues), thread_num,
-      [](QueueInfo<TQueue> const& lhs, uint32_t value) { return lhs.thread_num < value; });
-
     std::error_code ec;
 
-    if ((current_active_queue_it == std::end(active_thread_queues)) ||
-        (current_active_queue_it->thread_num != thread_num))
+    for (auto it = std::begin(_active_queues); it != std::end(_active_queues);)
     {
-      // Queue doesn't exist so we create it
-      if (!create_and_insert_queue_to_active_thread_queues(thread_num, sequence, active_thread_queues, run_dir))
+      auto& active_queue = *it;
+
+      if (!active_queue.queue->empty())
       {
+        ++it;
         continue;
       }
-    }
-    else if (current_active_queue_it->sequence == sequence && current_active_queue_it->queue->empty())
-    {
-      // we have the minimum sequence queue already in active_thread_queues and the queue is empty
+
+      // we have the minimum sequence queue already in active_queues and the queue is empty
       // Check if we need to remove an empty queue
-      if (std::optional<uint32_t> const next_sequence = find_next_queue_sequence(thread_num, sequence, ready_queues);
+      if (std::optional<uint32_t> const next_sequence =
+            _find_next_sequence(active_queue.thread_num, active_queue.sequence);
           next_sequence.has_value())
       {
+        uint32_t const thread_num = active_queue.thread_num;
+        uint32_t const sequence = active_queue.sequence;
+
         // This means that the producer has moved to a new queue
         // we want to remove it and replace it with the next sequence queue
-        active_thread_queues.erase(current_active_queue_it);
-        if (!TQueue::remove_shm_files(fmtbitlog::format("{}.{}.ext", thread_num, sequence), run_dir, ec))
+        it = _active_queues.erase(it);
+        if (!TQueue::remove_shm_files(fmtbitlog::format("{}.{}.ext", thread_num, sequence), _run_dir, ec))
         {
           // TODO:: handle error ?
         }
 
-        if (!create_and_insert_queue_to_active_thread_queues(thread_num, *next_sequence, active_thread_queues, run_dir))
+        if (!_insert_to_active_queues(thread_num, *next_sequence))
+        {
+          ++it;
+          continue;
+        }
+      }
+      else if (lock_file(active_queue.lock_file_fd, ec))
+      {
+        // if we can lock the .lock file it means the producer process is not running anymore
+        unlock_file(active_queue.lock_file_fd, ec);
+
+        uint32_t const thread_num = active_queue.thread_num;
+        uint32_t const sequence = active_queue.sequence;
+
+        it = _active_queues.erase(it);
+        if (!TQueue::remove_shm_files(fmtbitlog::format("{}.{}.ext", thread_num, sequence), _run_dir, ec))
+        {
+          // TODO:: handle error ?
+        }
+      }
+      else
+      {
+        ++it;
+      }
+    }
+  }
+
+protected:
+  [[nodiscard]] std::vector<std::pair<uint32_t, uint32_t>> const& _get_discovered_queues() const noexcept
+  {
+    return _discovered_queues;
+  }
+
+  /**
+   * @brief Discovers and populates a vector with thread queues found in the specified directory.
+   *
+   * The function looks for ".ready" files, such as "0.0.ready" or "1.0.ready," representing
+   * thread number and sequence information. The discovered thread queues are sorted and added to
+   * the provided vector.
+   *
+   * @param ec An output parameter for error codes.
+   * @return `true` if the discovery process is successful, `false` otherwise.
+   *         If an error occurs, the error code is set in the `ec` parameter.
+   */
+  [[nodiscard]] bool _discover_queues(std::error_code& ec)
+  {
+    _discovered_queues.clear();
+
+    auto run_dir_it = std::filesystem::directory_iterator(_run_dir, ec);
+
+    if (ec && ec != std::errc::no_such_file_or_directory)
+    {
+      return false;
+    }
+
+    for (auto const& file_entry : run_dir_it)
+    {
+      // Look into all the files under the current run directory
+      if (!file_entry.is_regular_file()) [[unlikely]]
+      {
+        // should never happen but just in case
+        continue;
+      }
+
+      // look for .ready files, e.g 0.0.ready, 1.0.ready (thread_num.sequence.ready)
+      if (file_entry.path().extension() == ".ready")
+      {
+        // e.g. 0.0 for a file 0.0.ready
+        std::string const file_stem = file_entry.path().stem().string();
+        size_t const dot_position = file_stem.find('.');
+
+        std::string_view const thread_num_str{file_stem.data(), dot_position};
+        uint32_t thread_num;
+        auto [ptr1, fec1] = std::from_chars(
+          thread_num_str.data(), thread_num_str.data() + thread_num_str.length(), thread_num);
+
+        if ((fec1 == std::errc::invalid_argument) || (fec1 == std::errc::result_out_of_range))
+        {
+          ec = std::make_error_code(fec1);
+          return false;
+        }
+
+        std::string_view const sequence_str{file_stem.data() + dot_position + 1,
+                                            file_stem.size() - dot_position - 1};
+        uint32_t sequence;
+        auto [ptr2, fec2] =
+          std::from_chars(sequence_str.data(), sequence_str.data() + sequence_str.length(), sequence);
+
+        if ((fec2 == std::errc::invalid_argument) || (fec2 == std::errc::result_out_of_range))
+        {
+          ec = std::make_error_code(fec2);
+          return false;
+        }
+
+        auto insertion_point = std::lower_bound(
+          std::begin(_discovered_queues), std::end(_discovered_queues),
+          std::make_pair(thread_num, sequence), [](const auto& lhs, const auto& rhs)
+          { return lhs.first < rhs.first || (lhs.first == rhs.first && lhs.second < rhs.second); });
+
+        _discovered_queues.insert(insertion_point, std::make_pair(thread_num, sequence));
+      }
+    }
+
+    uint32_t last_thread_num = std::numeric_limits<uint32_t>::max();
+
+    for (auto [thread_num, sequence] : _discovered_queues)
+    {
+      if (thread_num == last_thread_num)
+      {
+        // skip future sequences
+        continue;
+      }
+
+      last_thread_num = thread_num;
+
+      // See if we have that thread num in our active_queues. We still need to do a find here
+      // as for example we can have e.g. active thread_num 0,1,2 queues. But when thread num 1
+      // finishes we will have 0,2 in our vector, therefore just using the index of the vector
+      // for the thread num is not enough
+      auto current_active_queue_it = std::lower_bound(
+        std::begin(_active_queues), std::end(_active_queues), thread_num,
+        [](QueueInfo<TQueue> const& lhs, uint32_t value) { return lhs.thread_num < value; });
+
+      if ((current_active_queue_it == std::end(_active_queues)) ||
+          (current_active_queue_it->thread_num != thread_num))
+      {
+        // Queue doesn't exist so we create it
+        if (!_insert_to_active_queues(thread_num, sequence))
         {
           continue;
         }
       }
-      else if (lock_file(current_active_queue_it->lock_file_fd, ec))
-      {
-        // if we can lock the .lock file it means the producer process is not running anymore
-        unlock_file(current_active_queue_it->lock_file_fd, ec);
-        active_thread_queues.erase(current_active_queue_it);
-        if (!TQueue::remove_shm_files(fmtbitlog::format("{}.{}.ext", thread_num, sequence), run_dir, ec))
-        {
-          // TODO:: handle error ?
-        }
-      }
     }
-  }
-}
 
+    return true;
+  }
+
+  /**
+   * @brief Creates and inserts a queue into the active_queues vector.
+   *
+   * @param thread_num The thread number.
+   * @param sequence The sequence number.
+   * @return True if successful, false otherwise.
+   */
+  [[nodiscard]] bool _insert_to_active_queues(uint32_t thread_num, uint32_t sequence)
+  {
+    std::filesystem::path const queue_path = _run_dir / fmtbitlog::format("{}.{}.lock", thread_num, sequence);
+    QueueInfo<TQueue> queue_info{thread_num, sequence, queue_path};
+
+    if (queue_info.lock_file_fd == -1)
+    {
+      // failed to open the lock file
+      return false;
+    }
+
+    std::error_code ec;
+
+    // TODO: Fix memory page size config
+    if (!queue_info.queue->open(queue_path, MemoryPageSize::RegularPage, ec))
+    {
+      return false;
+    }
+
+    auto insertion_point =
+      std::lower_bound(std::begin(_active_queues), std::end(_active_queues), thread_num,
+                       [](auto const& lhs, auto const& rhs) { return lhs.thread_num < rhs; });
+
+    _active_queues.insert(insertion_point, std::move(queue_info));
+
+    return true;
+  }
+
+  /**
+   * @brief Finds the next sequence queue for the given thread and current sequence.
+   *
+   * This function performs a binary search in the sorted vector of thread queues to discover
+   * the next sequence for the specified thread and sequence. If a next sequence is found,
+   * it is returned; otherwise, std::nullopt is returned.
+   *
+   * @param thread_num The thread number.
+   * @param sequence The current sequence.
+   */
+  [[nodiscard]] std::optional<uint32_t> _find_next_sequence(uint32_t thread_num, uint32_t sequence)
+  {
+    auto it = std::lower_bound(std::cbegin(_discovered_queues), std::cend(_discovered_queues),
+                               std::make_pair(thread_num, sequence), [](auto const& lhs, auto const& rhs)
+                               { return lhs.first == rhs.first && lhs.second < rhs.second; });
+
+    while (it != std::cend(_discovered_queues) && it->first == thread_num)
+    {
+      if (it->second > sequence)
+      {
+        return it->second;
+      }
+      ++it;
+    }
+
+    return std::nullopt;
+  }
+
+private:
+  std::vector<QueueInfo<TQueue>> _active_queues;
+  std::vector<std::pair<uint32_t, uint32_t>> _discovered_queues;
+  std::filesystem::path const& _run_dir;
+};
 } // namespace bitlog::detail
