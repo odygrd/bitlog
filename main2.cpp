@@ -13,7 +13,7 @@ int main()
                         using backend_options_t = bitlog::BackendOptions<bitlog::QueueTypeOption::Default>;
                         using backend_t = bitlog::Backend<backend_options_t>;
 
-                        backend_t be{"TODO::unused"};
+                        backend_t be{};
 
                         while (true)
                         {
