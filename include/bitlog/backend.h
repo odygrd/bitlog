@@ -91,6 +91,14 @@ public:
       break;
     }
 
+    // Process application contexts and log
+    for (auto& app_ctx : _application_contexts)
+    {
+      app_ctx->process_queues_and_log();
+    }
+
+    // remove any inactive ones, deleting the unused files
+    // TODO:: Maybe do that on a timer
     _remove_inactive_application_contexts();
   }
 
@@ -206,7 +214,9 @@ private:
 
       if (!app_ctx->is_running())
       {
+        // save the run dir before erasing
         std::filesystem::path const run_dir = app_ctx->run_dir();
+
         it = _application_contexts.erase(it);
 
         std::error_code ec;
@@ -216,11 +226,11 @@ private:
         {
           // TODO:: Handle error
         }
-        continue;
       }
-
-      app_ctx->process_queues_and_log();
-      ++it;
+      else
+      {
+        ++it;
+      }
     }
   }
 
