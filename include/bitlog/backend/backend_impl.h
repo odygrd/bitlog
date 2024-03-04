@@ -14,6 +14,8 @@
 #include "bitlog/common/bounded_queue.h"
 #include "decode.h"
 
+#include <iostream> // TODO: Remove
+
 namespace bitlog::detail
 {
 /**
@@ -84,10 +86,11 @@ struct LoggerMetadata
  * It is intended to be called once at the beginning.
  *
  * @param path The path to the log statement metadata file.
+ * @param ec An output parameter for error codes.
  * @return A pair containing the vector of log statement metadata and a string representing additional information.
  */
-inline std::pair<std::vector<LogStatementMetadata>, std::string> read_log_statement_metadata_file(
-  std::filesystem::path const& path)
+[[nodiscard]] inline std::pair<std::vector<LogStatementMetadata>, std::string> read_log_statement_metadata_file(
+  std::filesystem::path const& path, std::error_code& ec)
 {
   MetadataFile log_statements_metadata_file;
   std::pair<std::vector<LogStatementMetadata>, std::string> ret_val;
@@ -133,7 +136,7 @@ inline std::pair<std::vector<LogStatementMetadata>, std::string> read_log_statem
 
           if (fec1 != std::errc{})
           {
-            // TODO:: report error
+            ec = std::make_error_code(fec1);
           }
 
           if (lsm_id != ret_val.first.size())
@@ -188,7 +191,7 @@ inline std::pair<std::vector<LogStatementMetadata>, std::string> read_log_statem
 
                 if (fec2 != std::errc{})
                 {
-                  // TODO:: report error
+                  ec = std::make_error_code(fec2);
                 }
 
                 lsm.type_descriptors.push_back(static_cast<TypeDescriptorName>(tdn));
@@ -203,7 +206,7 @@ inline std::pair<std::vector<LogStatementMetadata>, std::string> read_log_statem
 
               if (fec2 != std::errc{})
               {
-                // TODO:: report error
+                ec = std::make_error_code(fec2);
               }
 
               lsm.level = static_cast<LogLevel>(level);
@@ -224,9 +227,11 @@ inline std::pair<std::vector<LogStatementMetadata>, std::string> read_log_statem
  * It is intended to be called once at the beginning.
  *
  * @param path The path to the logger metadata file.
+ * @param ec An output parameter for error codes.
  * @return A vector containing the logger metadata.
  */
-inline std::vector<LoggerMetadata> read_loggers_metadata_file(std::filesystem::path const& path)
+[[nodiscard]] inline std::vector<LoggerMetadata> read_loggers_metadata_file(std::filesystem::path const& path,
+                                                                            std::error_code& ec)
 {
   MetadataFile logger_metadata_file;
   std::vector<LoggerMetadata> ret_val;
@@ -265,7 +270,7 @@ inline std::vector<LoggerMetadata> read_loggers_metadata_file(std::filesystem::p
 
           if (fec1 != std::errc{})
           {
-            // TODO:: report error
+            ec = std::make_error_code(fec1);
           }
 
           if (logger_id != ret_val.size())
@@ -323,12 +328,17 @@ public:
   using backend_options_t = TBackendOptions;
   using queue_info_t = QueueInfo<typename backend_options_t::queue_type>;
 
-  ThreadQueueManager(std::filesystem::path const& run_dir, backend_options_t const& options)
-    : _run_dir(run_dir), _options(options){};
+  ThreadQueueManager(std::filesystem::path run_dir, backend_options_t const& options)
+    : _run_dir(std::move(run_dir)), _options(options){};
 
   [[nodiscard]] std::vector<queue_info_t> const& active_queues() const noexcept
   {
     return _active_queues;
+  }
+
+  [[nodiscard]] std::vector<std::pair<uint32_t, uint32_t>> const& discovered_queues() const noexcept
+  {
+    return _discovered_queues;
   }
 
   /**
@@ -394,12 +404,6 @@ public:
     }
   }
 
-protected:
-  [[nodiscard]] std::vector<std::pair<uint32_t, uint32_t>> const& _get_discovered_queues() const noexcept
-  {
-    return _discovered_queues;
-  }
-
   /**
    * @brief Discovers and populates a vector with thread queues found in the specified directory.
    *
@@ -411,7 +415,7 @@ protected:
    * @return `true` if the discovery process is successful, `false` otherwise.
    *         If an error occurs, the error code is set in the `ec` parameter.
    */
-  [[nodiscard]] bool _discover_queues(std::error_code& ec)
+  [[nodiscard]] bool discover_queues(std::error_code& ec)
   {
     _discovered_queues.clear();
 
@@ -504,6 +508,7 @@ protected:
     return true;
   }
 
+protected:
   /**
    * @brief Creates and inserts a queue into the active_queues vector.
    *
@@ -569,7 +574,241 @@ protected:
 private:
   std::vector<queue_info_t> _active_queues;
   std::vector<std::pair<uint32_t, uint32_t>> _discovered_queues;
-  std::filesystem::path const& _run_dir;
+  std::filesystem::path _run_dir;
   backend_options_t const& _options;
+};
+
+/**
+ * @brief Application context class template.
+ *
+ * Manages the application state, including thread queues, logging metadata, and options.
+ */
+template <typename TBackendOptions>
+class ApplicationContext
+{
+public:
+  using backend_options_t = TBackendOptions;
+
+  /**
+   * @brief Constructor for ApplicationContext.
+   *
+   * @param run_dir The path to the application's run directory.
+   * @param options Backend options for the application.
+   */
+  ApplicationContext(std::filesystem::path const& run_dir, backend_options_t const& options)
+    : _thread_queue_manager(run_dir, options),
+      _run_dir(run_dir.string()),
+      _application_id(run_dir.parent_path().stem()),
+      _start_ts(run_dir.stem()),
+      _options(options)
+  {
+  }
+
+  /**
+   * @brief Initializes the application context, reading log statement metadata and process ID.
+   *
+   * In case of an error during initialization, a runtime_error is thrown.
+   */
+  [[nodiscard]] bool init(std::error_code& ec)
+  {
+    auto [log_statement_metadata, process_id] = detail::read_log_statement_metadata_file(_run_dir, ec);
+
+    if (ec)
+    {
+      return false;
+    }
+
+    _log_statement_metadata = std::move(log_statement_metadata);
+    _process_id = std::move(process_id);
+
+    auto run_dir = std::filesystem::path{_run_dir} / APP_RUNNING_FILENAME;
+    _running_file_fd = ::open(run_dir.c_str(), O_RDONLY);
+
+    if (_running_file_fd == -1)
+    {
+      ec = std::make_error_code(static_cast<std::errc>(errno));
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * @brief Processes thread queues and logs messages.
+   *
+   * Discovers and updates active queues and logs messages from those queues.
+   */
+  void process_queues_and_log()
+  {
+    std::error_code ec;
+
+    if (!_thread_queue_manager.discover_queues(ec)) [[unlikely]]
+    {
+      // TODO:: Handle error
+    }
+
+    _thread_queue_manager.update_active_queues();
+
+    for (auto& queue_info : _thread_queue_manager.active_queues())
+    {
+      uint8_t const* read_buffer = queue_info.queue->prepare_read();
+
+      if (!read_buffer)
+      {
+        continue;
+      }
+
+      uint8_t const* read_buffer_begin = read_buffer;
+
+      // Read a log message from the buffer
+      // TODO:: Use custom memcpy ?
+      uint64_t timestamp;
+      std::memcpy(&timestamp, read_buffer, sizeof(timestamp));
+      read_buffer += sizeof(timestamp);
+
+      uint32_t metadata_id;
+      std::memcpy(&metadata_id, read_buffer, sizeof(metadata_id));
+      read_buffer += sizeof(metadata_id);
+
+      uint32_t logger_id;
+      std::memcpy(&logger_id, read_buffer, sizeof(logger_id));
+      read_buffer += sizeof(logger_id);
+
+      LogStatementMetadata const* lsm = get_log_statement_metadata(metadata_id);
+
+      _fmt_args_store.clear();
+      bitlog::detail::decode(read_buffer, lsm->type_descriptors, _fmt_args_store);
+
+      _log_message.clear();
+      fmtbitlog::vformat_to(std::back_inserter(_log_message), lsm->log_format,
+                            fmtbitlog::basic_format_args(_fmt_args_store.data(), _fmt_args_store.size()));
+
+      LoggerMetadata const* lm = get_logger_metadata(logger_id);
+
+      std::cout << "LOG: ts " << timestamp << " " << lm->name << " "
+                << std::string_view{_log_message.data(), _log_message.size()} << std::endl;
+
+      queue_info.queue->finish_read(read_buffer - read_buffer_begin);
+      queue_info.queue->commit_read();
+    }
+  }
+
+  /**
+   * @brief Checks if the application is running.
+   *
+   * @return True if the application is running; otherwise, false.
+   */
+  [[nodiscard]] bool is_running()
+  {
+    if (_running_file_fd == -1)
+    {
+      // probably not initialised yet
+      return true;
+    }
+
+    for (auto& queue_info : _thread_queue_manager.active_queues())
+    {
+      if (!queue_info.queue->empty())
+      {
+        return true;
+      }
+    }
+
+    // all queues are empty
+    std::error_code ec;
+    if (detail::lock_file(_running_file_fd, ec))
+    {
+      // if we can lock the file then the application is not running
+      detail::unlock_file(_running_file_fd, ec);
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * @brief Gets the application ID.
+   *
+   * @return The application ID.
+   */
+  [[nodiscard]] std::string const& application_id() const noexcept { return _application_id; }
+
+  /**
+   * @brief Gets the start timestamp.
+   *
+   * @return The start timestamp.
+   */
+  [[nodiscard]] std::string const& start_ts() const noexcept { return _start_ts; }
+
+  /**
+   * @brief Gets the run directory.
+   *
+   * @return The run directory.
+   */
+  [[nodiscard]] std::string const& run_dir() const noexcept { return _run_dir; }
+
+private:
+  /**
+   * @brief Gets logger metadata by ID.
+   *
+   * If the logger ID is not found, attempts to reload metadata from file.
+   *
+   * @param id Logger ID.
+   * @return Pointer to the logger metadata if found; otherwise, nullptr.
+   */
+  [[nodiscard]] LoggerMetadata const* get_logger_metadata(uint32_t id)
+  {
+    if (id >= _logger_metadata.size())
+    {
+      // We do not have this logger, we want to try to reload the file
+      std::error_code ec;
+      auto loggers_metadata = detail::read_loggers_metadata_file(_run_dir, ec);
+
+      if (ec) [[unlikely]]
+      {
+        return nullptr;
+      }
+
+      _logger_metadata = std::move(loggers_metadata);
+    }
+
+    if (id >= _logger_metadata.size()) [[unlikely]]
+    {
+      return nullptr;
+    }
+
+    return &_logger_metadata[id];
+  }
+
+  /**
+   * @brief Gets log statement metadata by ID.
+   *
+   * Log Statement Metadata are loaded once on the first statement we try to format
+   *
+   * @param id Log Statement ID.
+   * @return Pointer to the log statement metadata if found; otherwise, nullptr.
+   */
+  [[nodiscard]] LogStatementMetadata const* get_log_statement_metadata(uint32_t id)
+  {
+    if (id >= _log_statement_metadata.size()) [[unlikely]]
+    {
+      return nullptr;
+    }
+
+    return &_log_statement_metadata[id];
+  }
+
+private:
+  std::vector<LogStatementMetadata> _log_statement_metadata;
+  std::vector<LoggerMetadata> _logger_metadata;
+  std::vector<fmtbitlog::basic_format_arg<fmtbitlog::format_context>> _fmt_args_store;
+  ThreadQueueManager<backend_options_t> _thread_queue_manager;
+  fmtbitlog::basic_memory_buffer<char, 1024> _log_message;
+  std::string _run_dir;
+  std::string _application_id;
+  std::string _start_ts;
+  std::string _process_id;
+  backend_options_t const& _options;
+  int _running_file_fd{-1};
 };
 } // namespace bitlog::detail

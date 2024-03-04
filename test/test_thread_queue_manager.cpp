@@ -15,13 +15,6 @@ public:
   using base_t = bitlog::detail::ThreadQueueManager<backend_options_t>;
   using base_t::base_t;
 
-  [[nodiscard]] std::vector<std::pair<uint32_t, uint32_t>> const& get_discovered_queues() const noexcept
-  {
-    return this->_get_discovered_queues();
-  }
-
-  [[nodiscard]] bool discover_queues(std::error_code& ec) { return this->_discover_queues(ec); }
-
   [[nodiscard]] std::optional<uint32_t> find_next_queue_sequence(uint32_t thread_num, uint32_t sequence)
   {
     return this->_find_next_sequence(thread_num, sequence);
@@ -44,17 +37,17 @@ TEST_CASE("discover_ready_queues")
 
   // First run on empty dir
   REQUIRE(tqm.discover_queues(ec));
-  REQUIRE(tqm.get_discovered_queues().empty());
+  REQUIRE(tqm.discovered_queues().empty());
 
   // Add an empty application directory and retry
   std::filesystem::create_directory(application_dir);
   REQUIRE(tqm.discover_queues(ec));
-  REQUIRE(tqm.get_discovered_queues().empty());
+  REQUIRE(tqm.discovered_queues().empty());
 
   // Add an empty run directory and retry
   std::filesystem::create_directory(run_dir);
   REQUIRE(tqm.discover_queues(ec));
-  REQUIRE(tqm.get_discovered_queues().empty());
+  REQUIRE(tqm.discovered_queues().empty());
 
   REQUIRE_EQ(tqm.find_next_queue_sequence(0, 0), std::optional<uint32_t>{});
 
@@ -72,15 +65,15 @@ TEST_CASE("discover_ready_queues")
 
   // Check again - note .ready file is missing
   REQUIRE(tqm.discover_queues(ec));
-  REQUIRE(tqm.get_discovered_queues().empty());
+  REQUIRE(tqm.discovered_queues().empty());
 
   create_file("0.0.ready");
 
   // Check again after the .ready file
   REQUIRE(tqm.discover_queues(ec));
-  REQUIRE_EQ(tqm.get_discovered_queues().size(), 1);
-  REQUIRE_EQ(tqm.get_discovered_queues()[0].first, 0);
-  REQUIRE_EQ(tqm.get_discovered_queues()[0].second, 0);
+  REQUIRE_EQ(tqm.discovered_queues().size(), 1);
+  REQUIRE_EQ(tqm.discovered_queues()[0].first, 0);
+  REQUIRE_EQ(tqm.discovered_queues()[0].second, 0);
 
   REQUIRE_EQ(tqm.find_next_queue_sequence(0, 0), std::optional<uint32_t>{});
 
@@ -104,12 +97,12 @@ TEST_CASE("discover_update_active_queues")
 
   // Check empty
   REQUIRE(tqm.discover_queues(ec));
-  REQUIRE(tqm.get_discovered_queues().empty());
+  REQUIRE(tqm.discovered_queues().empty());
   REQUIRE_EQ(tqm.find_next_queue_sequence(0, 0), std::optional<uint32_t>{});
 
   // Create first queue
   REQUIRE(tqm.discover_queues(ec));
-  REQUIRE(tqm.get_discovered_queues().empty());
+  REQUIRE(tqm.discovered_queues().empty());
 
   bitlog::detail::BoundedQueue queue_1;
   REQUIRE(queue_1.create(run_dir / fmtbitlog::format("{}.{}.ext", 0, 0), 4096,
@@ -117,9 +110,9 @@ TEST_CASE("discover_update_active_queues")
 
   // Check
   REQUIRE(tqm.discover_queues(ec));
-  REQUIRE_EQ(tqm.get_discovered_queues().size(), 1);
-  REQUIRE_EQ(tqm.get_discovered_queues()[0].first, 0);
-  REQUIRE_EQ(tqm.get_discovered_queues()[0].second, 0);
+  REQUIRE_EQ(tqm.discovered_queues().size(), 1);
+  REQUIRE_EQ(tqm.discovered_queues()[0].first, 0);
+  REQUIRE_EQ(tqm.discovered_queues()[0].second, 0);
 
   REQUIRE_EQ(tqm.find_next_queue_sequence(0, 0), std::optional<uint32_t>{});
 
@@ -135,11 +128,11 @@ TEST_CASE("discover_update_active_queues")
 
   // Check again
   REQUIRE(tqm.discover_queues(ec));
-  REQUIRE_EQ(tqm.get_discovered_queues().size(), 2);
-  REQUIRE_EQ(tqm.get_discovered_queues()[0].first, 0);
-  REQUIRE_EQ(tqm.get_discovered_queues()[0].second, 0);
-  REQUIRE_EQ(tqm.get_discovered_queues()[1].first, 1);
-  REQUIRE_EQ(tqm.get_discovered_queues()[1].second, 0);
+  REQUIRE_EQ(tqm.discovered_queues().size(), 2);
+  REQUIRE_EQ(tqm.discovered_queues()[0].first, 0);
+  REQUIRE_EQ(tqm.discovered_queues()[0].second, 0);
+  REQUIRE_EQ(tqm.discovered_queues()[1].first, 1);
+  REQUIRE_EQ(tqm.discovered_queues()[1].second, 0);
 
   REQUIRE_EQ(tqm.find_next_queue_sequence(0, 0), std::optional<uint32_t>{});
   REQUIRE_EQ(tqm.find_next_queue_sequence(1, 0), std::optional<uint32_t>{});
@@ -158,13 +151,13 @@ TEST_CASE("discover_update_active_queues")
 
   // Check again
   REQUIRE(tqm.discover_queues(ec));
-  REQUIRE_EQ(tqm.get_discovered_queues().size(), 3);
-  REQUIRE_EQ(tqm.get_discovered_queues()[0].first, 0);
-  REQUIRE_EQ(tqm.get_discovered_queues()[0].second, 0);
-  REQUIRE_EQ(tqm.get_discovered_queues()[1].first, 0);
-  REQUIRE_EQ(tqm.get_discovered_queues()[1].second, 1);
-  REQUIRE_EQ(tqm.get_discovered_queues()[2].first, 1);
-  REQUIRE_EQ(tqm.get_discovered_queues()[2].second, 0);
+  REQUIRE_EQ(tqm.discovered_queues().size(), 3);
+  REQUIRE_EQ(tqm.discovered_queues()[0].first, 0);
+  REQUIRE_EQ(tqm.discovered_queues()[0].second, 0);
+  REQUIRE_EQ(tqm.discovered_queues()[1].first, 0);
+  REQUIRE_EQ(tqm.discovered_queues()[1].second, 1);
+  REQUIRE_EQ(tqm.discovered_queues()[2].first, 1);
+  REQUIRE_EQ(tqm.discovered_queues()[2].second, 0);
 
   REQUIRE_EQ(tqm.find_next_queue_sequence(0, 0), 1);
 
@@ -183,13 +176,13 @@ TEST_CASE("discover_update_active_queues")
 
   // Check again
   REQUIRE(tqm.discover_queues(ec));
-  REQUIRE_EQ(tqm.get_discovered_queues().size(), 3);
-  REQUIRE_EQ(tqm.get_discovered_queues()[0].first, 0);
-  REQUIRE_EQ(tqm.get_discovered_queues()[0].second, 1);
-  REQUIRE_EQ(tqm.get_discovered_queues()[1].first, 0);
-  REQUIRE_EQ(tqm.get_discovered_queues()[1].second, 2);
-  REQUIRE_EQ(tqm.get_discovered_queues()[2].first, 1);
-  REQUIRE_EQ(tqm.get_discovered_queues()[2].second, 0);
+  REQUIRE_EQ(tqm.discovered_queues().size(), 3);
+  REQUIRE_EQ(tqm.discovered_queues()[0].first, 0);
+  REQUIRE_EQ(tqm.discovered_queues()[0].second, 1);
+  REQUIRE_EQ(tqm.discovered_queues()[1].first, 0);
+  REQUIRE_EQ(tqm.discovered_queues()[1].second, 2);
+  REQUIRE_EQ(tqm.discovered_queues()[2].first, 1);
+  REQUIRE_EQ(tqm.discovered_queues()[2].second, 0);
 
   REQUIRE_EQ(tqm.find_next_queue_sequence(0, 1), 2);
   REQUIRE_EQ(tqm.find_next_queue_sequence(0, 2), std::optional<uint32_t>{});
@@ -205,11 +198,11 @@ TEST_CASE("discover_update_active_queues")
 
   // Check again
   REQUIRE(tqm.discover_queues(ec));
-  REQUIRE_EQ(tqm.get_discovered_queues().size(), 2);
-  REQUIRE_EQ(tqm.get_discovered_queues()[0].first, 0);
-  REQUIRE_EQ(tqm.get_discovered_queues()[0].second, 2);
-  REQUIRE_EQ(tqm.get_discovered_queues()[1].first, 1);
-  REQUIRE_EQ(tqm.get_discovered_queues()[1].second, 0);
+  REQUIRE_EQ(tqm.discovered_queues().size(), 2);
+  REQUIRE_EQ(tqm.discovered_queues()[0].first, 0);
+  REQUIRE_EQ(tqm.discovered_queues()[0].second, 2);
+  REQUIRE_EQ(tqm.discovered_queues()[1].first, 1);
+  REQUIRE_EQ(tqm.discovered_queues()[1].second, 0);
 
   REQUIRE_EQ(tqm.find_next_queue_sequence(0, 2), std::optional<uint32_t>{});
   REQUIRE_EQ(tqm.find_next_queue_sequence(1, 0), std::optional<uint32_t>{});
@@ -228,13 +221,13 @@ TEST_CASE("discover_update_active_queues")
 
   // Check again
   REQUIRE(tqm.discover_queues(ec));
-  REQUIRE_EQ(tqm.get_discovered_queues().size(), 3);
-  REQUIRE_EQ(tqm.get_discovered_queues()[0].first, 0);
-  REQUIRE_EQ(tqm.get_discovered_queues()[0].second, 2);
-  REQUIRE_EQ(tqm.get_discovered_queues()[1].first, 1);
-  REQUIRE_EQ(tqm.get_discovered_queues()[1].second, 0);
-  REQUIRE_EQ(tqm.get_discovered_queues()[2].first, 2);
-  REQUIRE_EQ(tqm.get_discovered_queues()[2].second, 0);
+  REQUIRE_EQ(tqm.discovered_queues().size(), 3);
+  REQUIRE_EQ(tqm.discovered_queues()[0].first, 0);
+  REQUIRE_EQ(tqm.discovered_queues()[0].second, 2);
+  REQUIRE_EQ(tqm.discovered_queues()[1].first, 1);
+  REQUIRE_EQ(tqm.discovered_queues()[1].second, 0);
+  REQUIRE_EQ(tqm.discovered_queues()[2].first, 2);
+  REQUIRE_EQ(tqm.discovered_queues()[2].second, 0);
 
   REQUIRE_EQ(tqm.find_next_queue_sequence(0, 2), std::optional<uint32_t>{});
   REQUIRE_EQ(tqm.find_next_queue_sequence(1, 0), std::optional<uint32_t>{});

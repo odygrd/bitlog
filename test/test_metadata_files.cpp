@@ -22,10 +22,13 @@ TEST_CASE("create_read_log_statement_metadata")
   // Write all metadata to a file
   frontend_manager_t frontend_manager{"create_read_log_statement_metadata_test"};
 
+  std::error_code ec;
+
   // Read the file
   auto const [log_statements_metadata_vec, process_id] =
-    bitlog::detail::read_log_statement_metadata_file(frontend_manager.run_dir());
+    bitlog::detail::read_log_statement_metadata_file(frontend_manager.run_dir(), ec);
 
+  REQUIRE_FALSE(ec);
   REQUIRE_EQ(process_id, std::to_string(::getpid()));
   REQUIRE_EQ(log_statements_metadata_vec.size(), 3);
 
@@ -61,10 +64,12 @@ TEST_CASE("create_read_log_statement_metadata")
 TEST_CASE("create_read_loggers_metadata")
 {
   frontend_manager_t frontend_manager{"create_read_loggers_metadata_test"};
+  std::error_code ec;
 
   // File has no loggers yet
   std::vector<bitlog::detail::LoggerMetadata> logger_metadata;
-  logger_metadata = bitlog::detail::read_loggers_metadata_file(frontend_manager.run_dir());
+  logger_metadata = bitlog::detail::read_loggers_metadata_file(frontend_manager.run_dir(), ec);
+  REQUIRE_FALSE(ec);
   REQUIRE_EQ(logger_metadata.size(), 0);
 
   // Add a logger
@@ -73,7 +78,8 @@ TEST_CASE("create_read_loggers_metadata")
   REQUIRE_EQ(logger_main->id, 0);
 
   // Check loggers
-  logger_metadata = bitlog::detail::read_loggers_metadata_file(frontend_manager.run_dir());
+  logger_metadata = bitlog::detail::read_loggers_metadata_file(frontend_manager.run_dir(), ec);
+  REQUIRE_FALSE(ec);
   REQUIRE_EQ(logger_metadata.size(), 1);
   REQUIRE_EQ(logger_metadata[0].name, "logger_main");
 
@@ -83,7 +89,8 @@ TEST_CASE("create_read_loggers_metadata")
   REQUIRE_EQ(another_logger->id, 1);
 
   // Check loggers
-  logger_metadata = bitlog::detail::read_loggers_metadata_file(frontend_manager.run_dir());
+  logger_metadata = bitlog::detail::read_loggers_metadata_file(frontend_manager.run_dir(), ec);
+  REQUIRE_FALSE(ec);
   REQUIRE_EQ(logger_metadata.size(), 2);
   REQUIRE_EQ(logger_metadata[0].name, "logger_main");
   REQUIRE_EQ(logger_metadata[1].name, "another_logger");
@@ -94,7 +101,8 @@ TEST_CASE("create_read_loggers_metadata")
   REQUIRE_EQ(existing_logger->id, 0);
 
   // Check loggers - nothing is appended
-  logger_metadata = bitlog::detail::read_loggers_metadata_file(frontend_manager.run_dir());
+  logger_metadata = bitlog::detail::read_loggers_metadata_file(frontend_manager.run_dir(), ec);
+  REQUIRE_FALSE(ec);
   REQUIRE_EQ(logger_metadata.size(), 2);
   REQUIRE_EQ(logger_metadata[0].name, "logger_main");
   REQUIRE_EQ(logger_metadata[1].name, "another_logger");

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "bitlog-inl.h"
+#include "frontend.h"
 
 #define LOG_CONDITIONAL(logger, level, likelihood, log_format, ...)                                  \
   do                                                                                                 \

@@ -254,6 +254,11 @@ public:
 
     _run_dir = *run_dir;
 
+    if (!_app_running_file.init_writer(_run_dir / detail::APP_RUNNING_FILENAME))
+    {
+      std::abort();
+    }
+
     if (!detail::create_log_statements_metadata_file(_run_dir))
     {
       std::abort();
@@ -263,6 +268,16 @@ public:
     {
       std::abort();
     }
+
+    std::filesystem::path app_ready_file_path = _run_dir / detail::APP_READY_FILENAME;
+    int app_ready_file_id = ::open(app_ready_file_path.c_str(), O_CREAT | O_RDWR | O_EXCL, 0660);
+
+    if (app_ready_file_id == -1)
+    {
+      std::abort();
+    }
+
+    ::close(app_ready_file_id);
   }
 
   /**
@@ -328,6 +343,7 @@ public:
   }
 
 private:
+  detail::MetadataFile _app_running_file;
   mutable std::mutex _lock;
   std::unordered_map<std::string, std::unique_ptr<LoggerBase>> _logger_registry; ///< key is the logger name, value is a pointer to the logger.
   std::filesystem::path _run_dir;

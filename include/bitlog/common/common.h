@@ -38,6 +38,8 @@ static constexpr size_t CACHE_LINE_SIZE_BYTES{64u};
 static constexpr size_t CACHE_LINE_ALIGNED{2 * CACHE_LINE_SIZE_BYTES};
 static constexpr char const* LOG_STATEMENTS_METADATA_FILENAME{"log-statements-metadata.yaml"};
 static constexpr char const* LOGGERS_METADATA_FILENAME{"loggers-metadata.yaml"};
+static constexpr char const* APP_RUNNING_FILENAME{"running.app-lock"};
+static constexpr char const* APP_READY_FILENAME{"init.app-ready"};
 
 /**
  * Round up a value to the nearest multiple of a specified size.
@@ -208,6 +210,7 @@ private:
 [[nodiscard]] inline std::filesystem::path resolve_base_dir(std::error_code& ec,
                                                             std::string_view base_dir = std::string_view{}) noexcept
 {
-  return base_dir.empty() ? (std::filesystem::exists("/dev/shm", ec) ? "/dev/shm" : "/tmp") : base_dir;
+  return base_dir.empty() ? (std::filesystem::exists("/dev/shm", ec) ? "/dev/shm/bitlog" : "/tmp/bitlog")
+                          : base_dir;
 }
 } // namespace bitlog::detail

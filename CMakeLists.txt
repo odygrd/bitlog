@@ -18,10 +18,10 @@ add_executable(hello main1.cpp)
 # Link to the library foo
 target_link_libraries(hello bitlog)
 
-## Create an executable
-#add_executable(hello2 main2.cxx)
+# Create an executable
+add_executable(hello2 main2.cpp)
 #
-## Link to the library foo
-#target_link_libraries(hello2 bitlog)
+# Link to the library foo
+target_link_libraries(hello2 bitlog)
 #
 add_subdirectory(test)
