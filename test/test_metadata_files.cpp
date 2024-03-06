@@ -4,19 +4,21 @@
 #include "bitlog/frontend.h"
 #include "bitlog/frontend/frontend_impl.h"
 
-using frontend_options_t =
-  bitlog::FrontendOptions<bitlog::QueuePolicyOption::BoundedBlocking, bitlog::QueueTypeOption::Default, true>;
-using frontend_manager_t = bitlog::FrontendManager<frontend_options_t>;
-using logger_t = bitlog::Logger<frontend_options_t>;
+using namespace bitlog;
+using namespace bitlog::detail;
+
+using frontend_options_t = FrontendOptions<QueuePolicyOption::BoundedBlocking, QueueTypeOption::Default, true>;
+using frontend_manager_t = FrontendManager<frontend_options_t>;
+using logger_t = Logger<frontend_options_t>;
 
 TEST_SUITE_BEGIN("MetadataFiles");
 
 TEST_CASE("create_read_log_statement_metadata")
 {
   {
-    REQUIRE_EQ(bitlog::detail::marco_metadata_node<"test_macro_metadata.cpp", "macro_metadata_node_1", 32, bitlog::LogLevel::Info, "hello {} {} {}", int, long int, double>.id, 0);
-    REQUIRE_EQ(bitlog::detail::marco_metadata_node<"test_macro_metadata.cpp",  "macro_metadata_node_1", 345, bitlog::LogLevel::Debug, "foo {} {}", int, long int>.id, 1);
-    REQUIRE_EQ(bitlog::detail::marco_metadata_node<"test_macro_metadata.cpp",  "macro_metadata_node_1", 1000, bitlog::LogLevel::Critical, "test">.id, 2);
+    REQUIRE_EQ(marco_metadata_node<"test_macro_metadata.cpp", "macro_metadata_node_1", 32, LogLevel::Info, "hello {} {} {}", int, long int, double>.id, 0);
+    REQUIRE_EQ(marco_metadata_node<"test_macro_metadata.cpp",  "macro_metadata_node_1", 345, LogLevel::Debug, "foo {} {}", int, long int>.id, 1);
+    REQUIRE_EQ(marco_metadata_node<"test_macro_metadata.cpp",  "macro_metadata_node_1", 1000, LogLevel::Critical, "test">.id, 2);
   }
 
   // Write all metadata to a file
@@ -26,37 +28,37 @@ TEST_CASE("create_read_log_statement_metadata")
 
   // Read the file
   auto const [log_statements_metadata_vec, process_id] =
-    bitlog::detail::read_log_statement_metadata_file(frontend_manager.run_dir(), ec);
+    read_log_statement_metadata_file(frontend_manager.run_dir(), ec);
 
   REQUIRE_FALSE(ec);
   REQUIRE_EQ(process_id, std::to_string(::getpid()));
   REQUIRE_EQ(log_statements_metadata_vec.size(), 3);
 
-  REQUIRE_EQ(log_statements_metadata_vec[0].line, "32");
-  REQUIRE_EQ(log_statements_metadata_vec[0].level, bitlog::LogLevel::Info);
-  REQUIRE_EQ(log_statements_metadata_vec[0].log_format, "hello {} {} {}");
-  REQUIRE_EQ(log_statements_metadata_vec[0].function, "macro_metadata_node_1");
-  REQUIRE_EQ(log_statements_metadata_vec[0].file, "test_macro_metadata.cpp");
-  REQUIRE_EQ(log_statements_metadata_vec[0].type_descriptors.size(), 3);
-  REQUIRE_EQ(log_statements_metadata_vec[0].type_descriptors[0], bitlog::detail::TypeDescriptorName::Int);
-  REQUIRE_EQ(log_statements_metadata_vec[0].type_descriptors[1], bitlog::detail::TypeDescriptorName::LongInt);
-  REQUIRE_EQ(log_statements_metadata_vec[0].type_descriptors[2], bitlog::detail::TypeDescriptorName::Double);
+  REQUIRE_EQ(log_statements_metadata_vec[0].source_line(), "32");
+  REQUIRE_EQ(log_statements_metadata_vec[0].log_level(), LogLevel::Info);
+  REQUIRE_EQ(log_statements_metadata_vec[0].message_format(), "hello {} {} {}");
+  REQUIRE_EQ(log_statements_metadata_vec[0].caller_function(), "macro_metadata_node_1");
+  REQUIRE_EQ(log_statements_metadata_vec[0].full_source_path(), "test_macro_metadata.cpp");
+  REQUIRE_EQ(log_statements_metadata_vec[0].type_descriptors().size(), 3);
+  REQUIRE_EQ(log_statements_metadata_vec[0].type_descriptors()[0], TypeDescriptorName::Int);
+  REQUIRE_EQ(log_statements_metadata_vec[0].type_descriptors()[1], TypeDescriptorName::LongInt);
+  REQUIRE_EQ(log_statements_metadata_vec[0].type_descriptors()[2], TypeDescriptorName::Double);
 
-  REQUIRE_EQ(log_statements_metadata_vec[1].line, "345");
-  REQUIRE_EQ(log_statements_metadata_vec[1].level, bitlog::LogLevel::Debug);
-  REQUIRE_EQ(log_statements_metadata_vec[1].log_format, "foo {} {}");
-  REQUIRE_EQ(log_statements_metadata_vec[1].function, "macro_metadata_node_1");
-  REQUIRE_EQ(log_statements_metadata_vec[1].file, "test_macro_metadata.cpp");
-  REQUIRE_EQ(log_statements_metadata_vec[1].type_descriptors.size(), 2);
-  REQUIRE_EQ(log_statements_metadata_vec[1].type_descriptors[0], bitlog::detail::TypeDescriptorName::Int);
-  REQUIRE_EQ(log_statements_metadata_vec[1].type_descriptors[1], bitlog::detail::TypeDescriptorName::LongInt);
+  REQUIRE_EQ(log_statements_metadata_vec[1].source_line(), "345");
+  REQUIRE_EQ(log_statements_metadata_vec[1].log_level(), LogLevel::Debug);
+  REQUIRE_EQ(log_statements_metadata_vec[1].message_format(), "foo {} {}");
+  REQUIRE_EQ(log_statements_metadata_vec[1].caller_function(), "macro_metadata_node_1");
+  REQUIRE_EQ(log_statements_metadata_vec[1].full_source_path(), "test_macro_metadata.cpp");
+  REQUIRE_EQ(log_statements_metadata_vec[1].type_descriptors().size(), 2);
+  REQUIRE_EQ(log_statements_metadata_vec[1].type_descriptors()[0], TypeDescriptorName::Int);
+  REQUIRE_EQ(log_statements_metadata_vec[1].type_descriptors()[1], TypeDescriptorName::LongInt);
 
-  REQUIRE_EQ(log_statements_metadata_vec[2].line, "1000");
-  REQUIRE_EQ(log_statements_metadata_vec[2].level, bitlog::LogLevel::Critical);
-  REQUIRE_EQ(log_statements_metadata_vec[2].log_format, "test");
-  REQUIRE_EQ(log_statements_metadata_vec[2].function, "macro_metadata_node_1");
-  REQUIRE_EQ(log_statements_metadata_vec[2].file, "test_macro_metadata.cpp");
-  REQUIRE_EQ(log_statements_metadata_vec[2].type_descriptors.size(), 0);
+  REQUIRE_EQ(log_statements_metadata_vec[2].source_line(), "1000");
+  REQUIRE_EQ(log_statements_metadata_vec[2].log_level(), LogLevel::Critical);
+  REQUIRE_EQ(log_statements_metadata_vec[2].message_format(), "test");
+  REQUIRE_EQ(log_statements_metadata_vec[2].caller_function(), "macro_metadata_node_1");
+  REQUIRE_EQ(log_statements_metadata_vec[2].full_source_path(), "test_macro_metadata.cpp");
+  REQUIRE_EQ(log_statements_metadata_vec[2].type_descriptors().size(), 0);
 
   std::filesystem::remove_all(frontend_manager.application_dir());
 }
@@ -67,8 +69,8 @@ TEST_CASE("create_read_loggers_metadata")
   std::error_code ec;
 
   // File has no loggers yet
-  std::vector<bitlog::detail::LoggerMetadata> logger_metadata;
-  logger_metadata = bitlog::detail::read_loggers_metadata_file(frontend_manager.run_dir(), ec);
+  std::vector<LoggerMetadata> logger_metadata;
+  logger_metadata = read_loggers_metadata_file(frontend_manager.run_dir(), ec);
   REQUIRE_FALSE(ec);
   REQUIRE_EQ(logger_metadata.size(), 0);
 
@@ -78,7 +80,7 @@ TEST_CASE("create_read_loggers_metadata")
   REQUIRE_EQ(logger_main->id, 0);
 
   // Check loggers
-  logger_metadata = bitlog::detail::read_loggers_metadata_file(frontend_manager.run_dir(), ec);
+  logger_metadata = read_loggers_metadata_file(frontend_manager.run_dir(), ec);
   REQUIRE_FALSE(ec);
   REQUIRE_EQ(logger_metadata.size(), 1);
   REQUIRE_EQ(logger_metadata[0].name, "logger_main");
@@ -89,7 +91,7 @@ TEST_CASE("create_read_loggers_metadata")
   REQUIRE_EQ(another_logger->id, 1);
 
   // Check loggers
-  logger_metadata = bitlog::detail::read_loggers_metadata_file(frontend_manager.run_dir(), ec);
+  logger_metadata = read_loggers_metadata_file(frontend_manager.run_dir(), ec);
   REQUIRE_FALSE(ec);
   REQUIRE_EQ(logger_metadata.size(), 2);
   REQUIRE_EQ(logger_metadata[0].name, "logger_main");
@@ -101,7 +103,7 @@ TEST_CASE("create_read_loggers_metadata")
   REQUIRE_EQ(existing_logger->id, 0);
 
   // Check loggers - nothing is appended
-  logger_metadata = bitlog::detail::read_loggers_metadata_file(frontend_manager.run_dir(), ec);
+  logger_metadata = read_loggers_metadata_file(frontend_manager.run_dir(), ec);
   REQUIRE_FALSE(ec);
   REQUIRE_EQ(logger_metadata.size(), 2);
   REQUIRE_EQ(logger_metadata[0].name, "logger_main");

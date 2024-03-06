@@ -46,17 +46,22 @@ private:
 struct MacroMetadata
 {
   constexpr MacroMetadata(std::string_view file, std::string_view function, uint32_t line, LogLevel level,
-                          std::string_view log_format, std::span<TypeDescriptorName const> type_descriptors)
-    : type_descriptors(type_descriptors), file(file), function(function), log_format(log_format), line(line), level(level)
+                          std::string_view message_format, std::span<TypeDescriptorName const> type_descriptors)
+    : type_descriptors(type_descriptors),
+      full_source_path(file),
+      caller_function(function),
+      message_format(message_format),
+      source_line(line),
+      log_level(level)
   {
   }
 
   std::span<TypeDescriptorName const> type_descriptors;
-  std::string_view file;
-  std::string_view function;
-  std::string_view log_format;
-  uint32_t line;
-  LogLevel level;
+  std::string_view full_source_path;
+  std::string_view caller_function;
+  std::string_view message_format;
+  uint32_t source_line;
+  LogLevel log_level;
 };
 
 /**
@@ -212,20 +217,22 @@ MacroMetadataNode marco_metadata_node{get_macro_metadata<File, Function, Line, L
     if (type_descriptors_str.empty())
     {
       file_data = fmtbitlog::format(
-        "  - id: {}\n    file: {}\n    line: {}\n    function: {}\n    log_format: {}\n    "
-        "log_level: {}\n",
-        metadata_node->id, metadata_node->macro_metadata.file, metadata_node->macro_metadata.line,
-        metadata_node->macro_metadata.function, metadata_node->macro_metadata.log_format,
-        static_cast<uint32_t>(metadata_node->macro_metadata.level));
+        "  - id: {}\n    full_source_path: {}\n    source_line: {}\n    caller_function: {}\n    "
+        "message_format: {}\n    log_level: {}\n",
+        metadata_node->id, metadata_node->macro_metadata.full_source_path,
+        metadata_node->macro_metadata.source_line, metadata_node->macro_metadata.caller_function,
+        metadata_node->macro_metadata.message_format,
+        static_cast<uint32_t>(metadata_node->macro_metadata.log_level));
     }
     else
     {
       file_data = fmtbitlog::format(
-        "  - id: {}\n    file: {}\n    line: {}\n    function: {}\n    log_format: {}\n    "
-        "type_descriptors: {}\n    log_level: {}\n",
-        metadata_node->id, metadata_node->macro_metadata.file, metadata_node->macro_metadata.line,
-        metadata_node->macro_metadata.function, metadata_node->macro_metadata.log_format,
-        type_descriptors_str, static_cast<uint32_t>(metadata_node->macro_metadata.level));
+        "  - id: {}\n    full_source_path: {}\n    source_line: {}\n    caller_function: {}\n    "
+        "message_format: {}\n    type_descriptors: {}\n    log_level: {}\n",
+        metadata_node->id, metadata_node->macro_metadata.full_source_path,
+        metadata_node->macro_metadata.source_line, metadata_node->macro_metadata.caller_function,
+        metadata_node->macro_metadata.message_format, type_descriptors_str,
+        static_cast<uint32_t>(metadata_node->macro_metadata.log_level));
     }
 
     if (!metadata_writer.write(file_data.data(), file_data.size(), ec))

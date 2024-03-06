@@ -6,13 +6,16 @@
 #include <fstream>
 #include <iostream>
 
+using namespace bitlog;
+using namespace bitlog::detail;
+
 using backend_options_t =
   bitlog::BackendOptions<bitlog::QueueTypeOption::Default>;
 
-class ThreadQueueManagerMock : public bitlog::detail::ThreadQueueManager<backend_options_t>
+class ThreadQueueManagerMock : public ThreadQueueManager<backend_options_t>
 {
 public:
-  using base_t = bitlog::detail::ThreadQueueManager<backend_options_t>;
+  using base_t = ThreadQueueManager<backend_options_t>;
   using base_t::base_t;
 
   [[nodiscard]] std::optional<uint32_t> find_next_queue_sequence(uint32_t thread_num, uint32_t sequence)
@@ -26,7 +29,7 @@ TEST_SUITE_BEGIN("ThreadQueueManager");
 TEST_CASE("discover_ready_queues")
 {
   std::error_code ec;
-  std::filesystem::path const run_dir_base = bitlog::detail::resolve_base_dir(ec);
+  std::filesystem::path const run_dir_base = resolve_base_dir(ec);
   REQUIRE_FALSE(ec);
 
   std::filesystem::path const application_dir = run_dir_base / "discover_ready_queues";
@@ -83,7 +86,7 @@ TEST_CASE("discover_ready_queues")
 TEST_CASE("discover_update_active_queues")
 {
   std::error_code ec;
-  std::filesystem::path const run_dir_base = bitlog::detail::resolve_base_dir(ec);
+  std::filesystem::path const run_dir_base = resolve_base_dir(ec);
   REQUIRE_FALSE(ec);
 
   std::filesystem::path const application_dir = run_dir_base / "discover_update_active_queues";
@@ -104,9 +107,9 @@ TEST_CASE("discover_update_active_queues")
   REQUIRE(tqm.discover_queues(ec));
   REQUIRE(tqm.discovered_queues().empty());
 
-  bitlog::detail::BoundedQueue queue_1;
+  BoundedQueue queue_1;
   REQUIRE(queue_1.create(run_dir / fmtbitlog::format("{}.{}.ext", 0, 0), 4096,
-                         bitlog::MemoryPageSize::RegularPage, 5, ec));
+                         MemoryPageSize::RegularPage, 5, ec));
 
   // Check
   REQUIRE(tqm.discover_queues(ec));
@@ -122,9 +125,9 @@ TEST_CASE("discover_update_active_queues")
   REQUIRE_EQ(tqm.active_queues()[0].sequence, 0);
 
   // Add another queue different thread
-  bitlog::detail::BoundedQueue queue_2;
+  BoundedQueue queue_2;
   REQUIRE(queue_2.create(run_dir / fmtbitlog::format("{}.{}.ext", 1, 0), 4096,
-                         bitlog::MemoryPageSize::RegularPage, 5, ec));
+                         MemoryPageSize::RegularPage, 5, ec));
 
   // Check again
   REQUIRE(tqm.discover_queues(ec));
@@ -145,9 +148,9 @@ TEST_CASE("discover_update_active_queues")
   REQUIRE_EQ(tqm.active_queues()[1].sequence, 0);
 
   // Add another queue with a new sequence, previous thread
-  bitlog::detail::BoundedQueue queue_3;
+  BoundedQueue queue_3;
   REQUIRE(queue_3.create(run_dir / fmtbitlog::format("{}.{}.ext", 0, 1), 4096,
-                         bitlog::MemoryPageSize::RegularPage, 5, ec));
+                         MemoryPageSize::RegularPage, 5, ec));
 
   // Check again
   REQUIRE(tqm.discover_queues(ec));
@@ -170,9 +173,9 @@ TEST_CASE("discover_update_active_queues")
   REQUIRE_EQ(tqm.active_queues()[1].sequence, 0);
 
   // Add another queue with a new sequence, previous thread
-  bitlog::detail::BoundedQueue queue_4;
+  BoundedQueue queue_4;
   REQUIRE(queue_4.create(run_dir / fmtbitlog::format("{}.{}.ext", 0, 2), 4096,
-                         bitlog::MemoryPageSize::RegularPage, 5, ec));
+                         MemoryPageSize::RegularPage, 5, ec));
 
   // Check again
   REQUIRE(tqm.discover_queues(ec));
@@ -215,9 +218,9 @@ TEST_CASE("discover_update_active_queues")
   REQUIRE_EQ(tqm.active_queues()[1].sequence, 0);
 
   // Add another queue different thread
-  bitlog::detail::BoundedQueue queue_5;
+  BoundedQueue queue_5;
   REQUIRE(queue_5.create(run_dir / fmtbitlog::format("{}.{}.ext", 2, 0), 4096,
-                         bitlog::MemoryPageSize::RegularPage, 5, ec));
+                         MemoryPageSize::RegularPage, 5, ec));
 
   // Check again
   REQUIRE(tqm.discover_queues(ec));

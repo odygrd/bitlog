@@ -6,151 +6,139 @@
 #include "bitlog/bundled/fmt/format.h"
 #include "bitlog/frontend/encode.h"
 
+using namespace bitlog;
+using namespace bitlog::detail;
+
 TEST_SUITE_BEGIN("EncodeDecode");
 
 TEST_CASE("get_type_descriptor")
 {
   // Fundamental Types
-  REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<char>::value, bitlog::detail::TypeDescriptorName::Char);
-  REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<unsigned char>::value,
-             bitlog::detail::TypeDescriptorName::UnsignedChar);
-  REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<short int>::value, bitlog::detail::TypeDescriptorName::ShortInt);
-  REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<unsigned short int>::value,
-             bitlog::detail::TypeDescriptorName::UnsignedShortInt);
-  REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<int>::value, bitlog::detail::TypeDescriptorName::Int);
-  REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<unsigned int>::value,
-             bitlog::detail::TypeDescriptorName::UnsignedInt);
-  REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<long int>::value, bitlog::detail::TypeDescriptorName::LongInt);
-  REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<unsigned long int>::value,
-             bitlog::detail::TypeDescriptorName::UnsignedLongInt);
-  REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<long long int>::value,
-             bitlog::detail::TypeDescriptorName::LongLongInt);
-  REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<unsigned long long int>::value,
-             bitlog::detail::TypeDescriptorName::UnsignedLongLongInt);
-  REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<float>::value, bitlog::detail::TypeDescriptorName::Float);
-  REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<double>::value, bitlog::detail::TypeDescriptorName::Double);
+  REQUIRE_EQ(GetTypeDescriptor<char>::value, TypeDescriptorName::Char);
+  REQUIRE_EQ(GetTypeDescriptor<unsigned char>::value, TypeDescriptorName::UnsignedChar);
+  REQUIRE_EQ(GetTypeDescriptor<short int>::value, TypeDescriptorName::ShortInt);
+  REQUIRE_EQ(GetTypeDescriptor<unsigned short int>::value, TypeDescriptorName::UnsignedShortInt);
+  REQUIRE_EQ(GetTypeDescriptor<int>::value, TypeDescriptorName::Int);
+  REQUIRE_EQ(GetTypeDescriptor<unsigned int>::value, TypeDescriptorName::UnsignedInt);
+  REQUIRE_EQ(GetTypeDescriptor<long int>::value, TypeDescriptorName::LongInt);
+  REQUIRE_EQ(GetTypeDescriptor<unsigned long int>::value, TypeDescriptorName::UnsignedLongInt);
+  REQUIRE_EQ(GetTypeDescriptor<long long int>::value, TypeDescriptorName::LongLongInt);
+  REQUIRE_EQ(GetTypeDescriptor<unsigned long long int>::value, TypeDescriptorName::UnsignedLongLongInt);
+  REQUIRE_EQ(GetTypeDescriptor<float>::value, TypeDescriptorName::Float);
+  REQUIRE_EQ(GetTypeDescriptor<double>::value, TypeDescriptorName::Double);
 
   // Pointers
-  REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<char const*>::value, bitlog::detail::TypeDescriptorName::CString);
-  REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<char*>::value, bitlog::detail::TypeDescriptorName::CString);
+  REQUIRE_EQ(GetTypeDescriptor<char const*>::value, TypeDescriptorName::CString);
+  REQUIRE_EQ(GetTypeDescriptor<char*>::value, TypeDescriptorName::CString);
 
   // Arrays
-  REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<char[10]>::value, bitlog::detail::TypeDescriptorName::CStringArray);
-  REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<char const[20]>::value,
-             bitlog::detail::TypeDescriptorName::CStringArray);
-  REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<char(&)[13]>::value,
-             bitlog::detail::TypeDescriptorName::CStringArray);
-  REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<char const(&)[13]>::value,
-             bitlog::detail::TypeDescriptorName::CStringArray);
+  REQUIRE_EQ(GetTypeDescriptor<char[10]>::value, TypeDescriptorName::CStringArray);
+  REQUIRE_EQ(GetTypeDescriptor<char const[20]>::value, TypeDescriptorName::CStringArray);
+  REQUIRE_EQ(GetTypeDescriptor<char(&)[13]>::value, TypeDescriptorName::CStringArray);
+  REQUIRE_EQ(GetTypeDescriptor<char const(&)[13]>::value, TypeDescriptorName::CStringArray);
 
   // References
-  REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<char&>::value, bitlog::detail::TypeDescriptorName::Char);
-  REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<char const&>::value, bitlog::detail::TypeDescriptorName::Char);
-  REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<char*&>::value, bitlog::detail::TypeDescriptorName::CString);
-  REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<char const*&>::value, bitlog::detail::TypeDescriptorName::CString);
-  REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<char const* const&>::value,
-             bitlog::detail::TypeDescriptorName::CString);
+  REQUIRE_EQ(GetTypeDescriptor<char&>::value, TypeDescriptorName::Char);
+  REQUIRE_EQ(GetTypeDescriptor<char const&>::value, TypeDescriptorName::Char);
+  REQUIRE_EQ(GetTypeDescriptor<char*&>::value, TypeDescriptorName::CString);
+  REQUIRE_EQ(GetTypeDescriptor<char const*&>::value, TypeDescriptorName::CString);
+  REQUIRE_EQ(GetTypeDescriptor<char const* const&>::value, TypeDescriptorName::CString);
 
   // Strings
-  REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<std::string>::value, bitlog::detail::TypeDescriptorName::StdString);
-  REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<std::string_view>::value,
-             bitlog::detail::TypeDescriptorName::StdString);
+  REQUIRE_EQ(GetTypeDescriptor<std::string>::value, TypeDescriptorName::StdString);
+  REQUIRE_EQ(GetTypeDescriptor<std::string_view>::value, TypeDescriptorName::StdString);
 }
 
 TEST_CASE("is_c_style_string_type")
 {
   char const* s1 = "const_char_pointer";
-  REQUIRE(bitlog::detail::is_c_style_string_type<decltype(s1)>());
-  REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<decltype(s1)>::value, bitlog::detail::TypeDescriptorName::CString);
+  REQUIRE(is_c_style_string_type<decltype(s1)>());
+  REQUIRE_EQ(GetTypeDescriptor<decltype(s1)>::value, TypeDescriptorName::CString);
 
   std::string s2 = "string";
-  REQUIRE_FALSE(bitlog::detail::is_c_style_string_type<decltype(s2)>());
-  REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<decltype(s2)>::value, bitlog::detail::TypeDescriptorName::StdString);
+  REQUIRE_FALSE(is_c_style_string_type<decltype(s2)>());
+  REQUIRE_EQ(GetTypeDescriptor<decltype(s2)>::value, TypeDescriptorName::StdString);
 
   char* s3 = s2.data();
-  REQUIRE(bitlog::detail::is_c_style_string_type<decltype(s3)>());
-  REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<decltype(s3)>::value, bitlog::detail::TypeDescriptorName::CString);
+  REQUIRE(is_c_style_string_type<decltype(s3)>());
+  REQUIRE_EQ(GetTypeDescriptor<decltype(s3)>::value, TypeDescriptorName::CString);
 
   char s4[] = "mutable_array";
-  REQUIRE(bitlog::detail::is_c_style_string_type<decltype(s4)>());
-  REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<decltype(s4)>::value,
-             bitlog::detail::TypeDescriptorName::CStringArray);
+  REQUIRE(is_c_style_string_type<decltype(s4)>());
+  REQUIRE_EQ(GetTypeDescriptor<decltype(s4)>::value, TypeDescriptorName::CStringArray);
 
   char const s5[] = "const_char_array";
-  REQUIRE(bitlog::detail::is_c_style_string_type<decltype(s5)>());
-  REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<decltype(s5)>::value,
-             bitlog::detail::TypeDescriptorName::CStringArray);
+  REQUIRE(is_c_style_string_type<decltype(s5)>());
+  REQUIRE_EQ(GetTypeDescriptor<decltype(s5)>::value, TypeDescriptorName::CStringArray);
 
   const char s6[] = "const_array_ref";
   const char(&ref)[sizeof(s6)] = s6;
-  REQUIRE(bitlog::detail::is_c_style_string_type<decltype(ref)>());
-  REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<decltype(ref)>::value,
-             bitlog::detail::TypeDescriptorName::CStringArray);
+  REQUIRE(is_c_style_string_type<decltype(ref)>());
+  REQUIRE_EQ(GetTypeDescriptor<decltype(ref)>::value, TypeDescriptorName::CStringArray);
 
-  REQUIRE(bitlog::detail::is_c_style_string_type<decltype("string_literal")>());
-  REQUIRE_EQ(bitlog::detail::GetTypeDescriptor<decltype("string_literal")>::value,
-             bitlog::detail::TypeDescriptorName::CStringArray);
+  REQUIRE(is_c_style_string_type<decltype("string_literal")>());
+  REQUIRE_EQ(GetTypeDescriptor<decltype("string_literal")>::value, TypeDescriptorName::CStringArray);
 
-  REQUIRE_FALSE(bitlog::detail::is_c_style_string_type<void*>());
-  REQUIRE_FALSE(bitlog::detail::is_c_style_string_type<void>());
-  REQUIRE_FALSE(bitlog::detail::is_c_style_string_type<char>());
+  REQUIRE_FALSE(is_c_style_string_type<void*>());
+  REQUIRE_FALSE(is_c_style_string_type<void>());
+  REQUIRE_FALSE(is_c_style_string_type<char>());
 }
 
 TEST_CASE("is_std_string_type")
 {
   std::string s1 = "string";
-  REQUIRE(bitlog::detail::is_std_string_type<decltype(s1)>());
+  REQUIRE(is_std_string_type<decltype(s1)>());
 
   std::string_view sv1 = "string_view";
-  REQUIRE(bitlog::detail::is_std_string_type<decltype(sv1)>());
+  REQUIRE(is_std_string_type<decltype(sv1)>());
 
   const std::string s2 = "const_string";
-  REQUIRE(bitlog::detail::is_std_string_type<decltype(s2)>());
+  REQUIRE(is_std_string_type<decltype(s2)>());
 
   std::string* ps3 = nullptr;
-  REQUIRE_FALSE(bitlog::detail::is_std_string_type<decltype(ps3)>());
+  REQUIRE_FALSE(is_std_string_type<decltype(ps3)>());
 
   std::string_view* psv4 = nullptr;
-  REQUIRE_FALSE(bitlog::detail::is_std_string_type<decltype(psv4)>());
+  REQUIRE_FALSE(is_std_string_type<decltype(psv4)>());
 
-  REQUIRE_FALSE(bitlog::detail::is_std_string_type<void*>());
-  REQUIRE_FALSE(bitlog::detail::is_std_string_type<void>());
-  REQUIRE_FALSE(bitlog::detail::is_std_string_type<char>());
+  REQUIRE_FALSE(is_std_string_type<void*>());
+  REQUIRE_FALSE(is_std_string_type<void>());
+  REQUIRE_FALSE(is_std_string_type<char>());
 
   char const arr[] = "const_char_array";
-  REQUIRE_FALSE(bitlog::detail::is_std_string_type<decltype(arr)>());
+  REQUIRE_FALSE(is_std_string_type<decltype(arr)>());
 
   char const* ptr = arr;
-  REQUIRE_FALSE(bitlog::detail::is_std_string_type<decltype(ptr)>());
+  REQUIRE_FALSE(is_std_string_type<decltype(ptr)>());
 }
 
 TEST_CASE("is_char_array_type")
 {
   char s1[] = "mutable_array";
-  REQUIRE(bitlog::detail::is_char_array_type<decltype(s1)>());
+  REQUIRE(is_char_array_type<decltype(s1)>());
 
   const char s2[] = "const_array";
-  REQUIRE(bitlog::detail::is_char_array_type<decltype(s2)>());
+  REQUIRE(is_char_array_type<decltype(s2)>());
 
   char const s3[] = "const_char_array";
-  REQUIRE(bitlog::detail::is_char_array_type<decltype(s3)>());
+  REQUIRE(is_char_array_type<decltype(s3)>());
 
   const char s4[] = "const_array_ref";
   const char(&ref)[sizeof(s4)] = s4;
-  REQUIRE(bitlog::detail::is_char_array_type<decltype(ref)>());
+  REQUIRE(is_char_array_type<decltype(ref)>());
 
   int arr[5] = {1, 2, 3, 4, 5};
-  REQUIRE_FALSE(bitlog::detail::is_char_array_type<decltype(arr)>());
+  REQUIRE_FALSE(is_char_array_type<decltype(arr)>());
 
   int* ptr = arr;
-  REQUIRE_FALSE(bitlog::detail::is_char_array_type<decltype(ptr)>());
+  REQUIRE_FALSE(is_char_array_type<decltype(ptr)>());
 
   std::string str = "not_char_array";
-  REQUIRE_FALSE(bitlog::detail::is_char_array_type<decltype(str)>());
+  REQUIRE_FALSE(is_char_array_type<decltype(str)>());
 
-  REQUIRE_FALSE(bitlog::detail::is_char_array_type<void*>());
-  REQUIRE_FALSE(bitlog::detail::is_char_array_type<void>());
-  REQUIRE_FALSE(bitlog::detail::is_char_array_type<char>());
+  REQUIRE_FALSE(is_char_array_type<void*>());
+  REQUIRE_FALSE(is_char_array_type<void>());
+  REQUIRE_FALSE(is_char_array_type<char>());
 }
 
 TEST_CASE("count_c_style_strings")
@@ -159,25 +147,24 @@ TEST_CASE("count_c_style_strings")
   char* s2 = nullptr;
   std::string s3 = "not_c_style_string";
   const char s4[] = "const_array";
-  REQUIRE_EQ(
-    bitlog::detail::count_c_style_strings<decltype(s1), decltype(s2), decltype(s3), decltype(s4)>(), 3);
+  REQUIRE_EQ(count_c_style_strings<decltype(s1), decltype(s2), decltype(s3), decltype(s4)>(), 3);
 
   char s5[] = "mutable_array";
   const char s6[] = "const_array_ref";
   const char(&ref)[sizeof(s6)] = s6;
-  REQUIRE_EQ(bitlog::detail::count_c_style_strings<decltype(s5), decltype(s6), decltype(ref)>(), 3);
+  REQUIRE_EQ(count_c_style_strings<decltype(s5), decltype(s6), decltype(ref)>(), 3);
 
   int arr[5] = {1, 2, 3, 4, 5};
-  REQUIRE_EQ(bitlog::detail::count_c_style_strings<decltype(arr)>(), 0);
+  REQUIRE_EQ(count_c_style_strings<decltype(arr)>(), 0);
 
   int* ptr = arr;
-  REQUIRE_EQ(bitlog::detail::count_c_style_strings<decltype(ptr)>(), 0);
+  REQUIRE_EQ(count_c_style_strings<decltype(ptr)>(), 0);
 
-  REQUIRE_EQ(bitlog::detail::count_c_style_strings<>(), 0);
-  REQUIRE_EQ(bitlog::detail::count_c_style_strings<void*>(), 0);
-  REQUIRE_EQ(bitlog::detail::count_c_style_strings<void>(), 0);
-  REQUIRE_EQ(bitlog::detail::count_c_style_strings<char>(), 0);
-  REQUIRE_EQ(bitlog::detail::count_c_style_strings<char, decltype("literal")>(), 1);
+  REQUIRE_EQ(count_c_style_strings<>(), 0);
+  REQUIRE_EQ(count_c_style_strings<void*>(), 0);
+  REQUIRE_EQ(count_c_style_strings<void>(), 0);
+  REQUIRE_EQ(count_c_style_strings<char>(), 0);
+  REQUIRE_EQ(count_c_style_strings<char, decltype("literal")>(), 1);
 }
 
 TEST_CASE("calculate_args_size_and_populate_string_lengths_1")
@@ -187,7 +174,7 @@ TEST_CASE("calculate_args_size_and_populate_string_lengths_1")
   const char(&ref)[sizeof(s2)] = s2;
 
   uint32_t c_style_string_lengths[4];
-  uint32_t total_size = bitlog::detail::calculate_args_size_and_populate_string_lengths(
+  uint32_t total_size = calculate_args_size_and_populate_string_lengths(
     c_style_string_lengths, s1, s2, ref, (int)42, "literal", (double)3.14, std::string("std_string"));
 
   REQUIRE_EQ(total_size,
@@ -207,7 +194,7 @@ TEST_CASE("calculate_args_size_and_populate_string_lengths_2")
   std::string s6 = "string_object";
 
   uint32_t c_style_string_lengths[3];
-  uint32_t total_size = bitlog::detail::calculate_args_size_and_populate_string_lengths(
+  uint32_t total_size = calculate_args_size_and_populate_string_lengths(
     c_style_string_lengths, s4, s5, (int)42, "literal", (double)3.14, std::string("std_string"), s6);
 
   REQUIRE_EQ(total_size,
@@ -230,7 +217,7 @@ TEST_CASE("encode_1")
   const char* s3 = "const_char_pointer";
 
   uint32_t c_style_string_lengths[4];
-  uint32_t total_size = bitlog::detail::calculate_args_size_and_populate_string_lengths(
+  uint32_t total_size = calculate_args_size_and_populate_string_lengths(
     c_style_string_lengths, s1, s2, ref, s3, (int)42, "literal", (double)3.14, std::string("std_string"));
 
   REQUIRE_EQ(total_size,
@@ -239,8 +226,7 @@ TEST_CASE("encode_1")
                sizeof(uint32_t) - 1 + sizeof(double) + sizeof(uint32_t) + 10);
 
   uint8_t* buffer_ptr = buffer;
-  bitlog::detail::encode<false>(buffer_ptr, c_style_string_lengths, s1, s2, ref, s3, (int)42,
-                                "literal", (double)3.14, std::string("std_string"));
+  encode<false>(buffer_ptr, c_style_string_lengths, s1, s2, ref, s3, (int)42, "literal", (double)3.14, std::string("std_string"));
 
   REQUIRE_EQ(buffer_ptr - buffer, total_size);
 
@@ -346,7 +332,7 @@ TEST_CASE("encode_decode")
   char s16 = 'B';
 
   uint32_t c_style_string_lengths[2];
-  uint32_t total_size = bitlog::detail::calculate_args_size_and_populate_string_lengths(
+  uint32_t total_size = calculate_args_size_and_populate_string_lengths(
     c_style_string_lengths, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13, s14, s15, s16);
 
   REQUIRE_EQ(c_style_string_lengths[0], 13);
@@ -358,32 +344,33 @@ TEST_CASE("encode_decode")
                sizeof (s13) + sizeof (uint32_t) - 1 + strlen(s14) + 1 + s15.size() + sizeof (uint32_t) + sizeof (s16));
 
   uint8_t* encode_buffer = buffer;
-  bitlog::detail::encode<false>(encode_buffer, c_style_string_lengths, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13, s14, s15, s16);
+  encode<false>(encode_buffer, c_style_string_lengths, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11,
+                s12, s13, s14, s15, s16);
 
   REQUIRE_EQ(encode_buffer - buffer, total_size);
 
-  std::vector<bitlog::detail::TypeDescriptorName> type_descriptors;
-  type_descriptors.emplace_back(bitlog::detail::GetTypeDescriptor<decltype(s1)>::value);
-  type_descriptors.emplace_back(bitlog::detail::GetTypeDescriptor<decltype(s2)>::value);
-  type_descriptors.emplace_back(bitlog::detail::GetTypeDescriptor<decltype(s3)>::value);
-  type_descriptors.emplace_back(bitlog::detail::GetTypeDescriptor<decltype(s4)>::value);
-  type_descriptors.emplace_back(bitlog::detail::GetTypeDescriptor<decltype(s5)>::value);
-  type_descriptors.emplace_back(bitlog::detail::GetTypeDescriptor<decltype(s6)>::value);
-  type_descriptors.emplace_back(bitlog::detail::GetTypeDescriptor<decltype(s7)>::value);
-  type_descriptors.emplace_back(bitlog::detail::GetTypeDescriptor<decltype(s8)>::value);
-  type_descriptors.emplace_back(bitlog::detail::GetTypeDescriptor<decltype(s9)>::value);
-  type_descriptors.emplace_back(bitlog::detail::GetTypeDescriptor<decltype(s10)>::value);
-  type_descriptors.emplace_back(bitlog::detail::GetTypeDescriptor<decltype(s11)>::value);
-  type_descriptors.emplace_back(bitlog::detail::GetTypeDescriptor<decltype(s12)>::value);
-  type_descriptors.emplace_back(bitlog::detail::GetTypeDescriptor<decltype(s13)>::value);
-  type_descriptors.emplace_back(bitlog::detail::GetTypeDescriptor<decltype(s14)>::value);
-  type_descriptors.emplace_back(bitlog::detail::GetTypeDescriptor<decltype(s15)>::value);
-  type_descriptors.emplace_back(bitlog::detail::GetTypeDescriptor<decltype(s16)>::value);
+  std::vector<TypeDescriptorName> type_descriptors;
+  type_descriptors.emplace_back(GetTypeDescriptor<decltype(s1)>::value);
+  type_descriptors.emplace_back(GetTypeDescriptor<decltype(s2)>::value);
+  type_descriptors.emplace_back(GetTypeDescriptor<decltype(s3)>::value);
+  type_descriptors.emplace_back(GetTypeDescriptor<decltype(s4)>::value);
+  type_descriptors.emplace_back(GetTypeDescriptor<decltype(s5)>::value);
+  type_descriptors.emplace_back(GetTypeDescriptor<decltype(s6)>::value);
+  type_descriptors.emplace_back(GetTypeDescriptor<decltype(s7)>::value);
+  type_descriptors.emplace_back(GetTypeDescriptor<decltype(s8)>::value);
+  type_descriptors.emplace_back(GetTypeDescriptor<decltype(s9)>::value);
+  type_descriptors.emplace_back(GetTypeDescriptor<decltype(s10)>::value);
+  type_descriptors.emplace_back(GetTypeDescriptor<decltype(s11)>::value);
+  type_descriptors.emplace_back(GetTypeDescriptor<decltype(s12)>::value);
+  type_descriptors.emplace_back(GetTypeDescriptor<decltype(s13)>::value);
+  type_descriptors.emplace_back(GetTypeDescriptor<decltype(s14)>::value);
+  type_descriptors.emplace_back(GetTypeDescriptor<decltype(s15)>::value);
+  type_descriptors.emplace_back(GetTypeDescriptor<decltype(s16)>::value);
 
   // Decode
   uint8_t const* decode_buffer = buffer;
   std::vector<fmtbitlog::basic_format_arg<fmtbitlog::format_context>> fmt_args;
-  bitlog::detail::decode(decode_buffer, type_descriptors, fmt_args);
+  decode(decode_buffer, type_descriptors, fmt_args);
 
   REQUIRE_EQ(fmt_args.size(), 16);
 

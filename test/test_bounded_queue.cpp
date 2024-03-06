@@ -5,9 +5,11 @@
 #include "bitlog/common/bounded_queue.h"
 #include "bitlog/frontend.h"
 
-using frontend_options_t =
-  bitlog::FrontendOptions<bitlog::QueuePolicyOption::BoundedBlocking, bitlog::QueueTypeOption::Default, true>;
-using frontend_manager_t = bitlog::FrontendManager<frontend_options_t>;
+using namespace bitlog;
+using namespace bitlog::detail;
+
+using frontend_options_t = FrontendOptions<QueuePolicyOption::BoundedBlocking, QueueTypeOption::Default, true>;
+using frontend_manager_t = FrontendManager<frontend_options_t>;
 
 TEST_SUITE_BEGIN("BoundedQueue");
 
@@ -21,7 +23,7 @@ void bounded_queue_read_write_test(std::filesystem::path const& path)
     TQueue queue;
 
     uint32_t const queue_capacity = 4096;
-    REQUIRE(queue.create(path, queue_capacity, bitlog::MemoryPageSize::RegularPage, 5, ec));
+    REQUIRE(queue.create(path, queue_capacity, MemoryPageSize::RegularPage, 5, ec));
 
     for (uint32_t i = 0; i < queue_capacity * 25u; ++i)
     {
@@ -69,13 +71,13 @@ void bounded_queue_read_write_test(std::filesystem::path const& path)
 TEST_CASE("bounded_queue_read_write_1")
 {
   frontend_manager_t frontend_manager{"bounded_queue_read_write_1"};
-  bounded_queue_read_write_test<bitlog::detail::BoundedQueueImpl<uint16_t, false>>(frontend_manager.run_dir());
+  bounded_queue_read_write_test<BoundedQueueImpl<uint16_t, false>>(frontend_manager.run_dir());
 }
 
 TEST_CASE("bounded_queue_read_write_2")
 {
   frontend_manager_t frontend_manager{"bounded_queue_read_write_2"};
-  bounded_queue_read_write_test<bitlog::detail::BoundedQueueImpl<uint16_t, true>>(frontend_manager.run_dir());
+  bounded_queue_read_write_test<BoundedQueueImpl<uint16_t, true>>(frontend_manager.run_dir());
 }
 
 template <typename TQueue>
@@ -87,7 +89,7 @@ void bounded_queue_read_write_threads(std::filesystem::path const& path)
       TQueue queue;
       uint32_t const queue_capacity = 131'072;
       std::error_code ec;
-      bool res = queue.create(path, queue_capacity, bitlog::MemoryPageSize::RegularPage, 5, ec);
+      bool res = queue.create(path, queue_capacity, MemoryPageSize::RegularPage, 5, ec);
 
       REQUIRE(res);
 
@@ -128,7 +130,7 @@ void bounded_queue_read_write_threads(std::filesystem::path const& path)
 
       REQUIRE(queue_created);
 
-      bool res = queue.open(path, bitlog::MemoryPageSize::RegularPage, ec);
+      bool res = queue.open(path, MemoryPageSize::RegularPage, ec);
       REQUIRE(res);
 
       res = queue.is_creator_process_running(ec);
@@ -179,13 +181,13 @@ void bounded_queue_read_write_threads(std::filesystem::path const& path)
 TEST_CASE("bounded_queue_read_write_threads_1")
 {
   frontend_manager_t frontend_manager{"bounded_queue_read_write_threads_1"};
-  bounded_queue_read_write_threads<bitlog::detail::BoundedQueue>(frontend_manager.run_dir());
+  bounded_queue_read_write_threads<BoundedQueue>(frontend_manager.run_dir());
 }
 
 TEST_CASE("bounded_queue_read_write_threads_2")
 {
   frontend_manager_t frontend_manager{"bounded_queue_read_write_threads_2"};
-  bounded_queue_read_write_threads<bitlog::detail::BoundedQueueX86>(frontend_manager.run_dir());
+  bounded_queue_read_write_threads<BoundedQueueX86>(frontend_manager.run_dir());
 }
 
 TEST_SUITE_END();

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -10,6 +11,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <unordered_map>
 #include <utility>
 
 #include <sys/file.h>
@@ -40,6 +42,82 @@ static constexpr char const* LOG_STATEMENTS_METADATA_FILENAME{"log-statements-me
 static constexpr char const* LOGGERS_METADATA_FILENAME{"loggers-metadata.yaml"};
 static constexpr char const* APP_RUNNING_FILENAME{"running.app-lock"};
 static constexpr char const* APP_READY_FILENAME{"init.app-ready"};
+
+/**
+ * @brief Converts LogLevel to its full string representation.
+ *
+ * @param log_level The log level to convert.
+ * @return A string view containing the full log level representation.
+ */
+[[nodiscard]] inline std::string_view log_level_to_string(LogLevel log_level)
+{
+  static constexpr std::array<std::string_view, 11> log_level_strings = {
+    {"TRACE_L3", "TRACE_L2", "TRACE_L1", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL", "NONE"}};
+
+  using log_lvl_t = std::underlying_type_t<LogLevel>;
+
+  auto const log_level_index = static_cast<log_lvl_t>(log_level);
+  if (log_level_index > (log_level_strings.size() - 1)) [[unlikely]]
+  {
+    // TODO:: Handle Error ?
+    std::abort();
+  }
+
+  return log_level_strings[log_level_index];
+}
+
+/**
+ * @brief Converts LogLevel to its short identifier string.
+ *
+ * @param log_level The log level to convert.
+ * @return A string view containing the short identifier of the log level.
+ */
+[[nodiscard]] inline std::string_view log_level_to_id_string(LogLevel log_level)
+{
+  static constexpr std::array<std::string_view, 11> log_level_id_strings = {
+    {"T3", "T2", "T1", "D", "I", "W", "E", "C", "N"}};
+
+  using log_lvl_t = std::underlying_type_t<LogLevel>;
+
+  auto const log_level_index = static_cast<log_lvl_t>(log_level);
+  if (log_level_index > (log_level_id_strings.size() - 1)) [[unlikely]]
+  {
+    // TODO:: Handle Error ?
+    std::abort();
+  }
+
+  return log_level_id_strings[log_level_index];
+}
+
+/**
+ * @brief Converts string to LogLevel.
+ *
+ * @param log_level The string representation of the log level.
+ * @return The corresponding LogLevel.
+ */
+[[nodiscard]] inline LogLevel log_level_from_string(std::string log_level)
+{
+  static std::unordered_map<std::string, LogLevel> const log_level_map = {
+    {"tracel3", LogLevel::TraceL3}, {"trace_l3", LogLevel::TraceL3},
+    {"tracel2", LogLevel::TraceL2}, {"trace_l2", LogLevel::TraceL2},
+    {"tracel1", LogLevel::TraceL1}, {"trace_l1", LogLevel::TraceL1},
+    {"debug", LogLevel::Debug},     {"info", LogLevel::Info},
+    {"warning", LogLevel::Warning}, {"error", LogLevel::Error}};
+
+  // parse log level
+  std::transform(log_level.begin(), log_level.end(), log_level.begin(),
+                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+  auto const search = log_level_map.find(log_level);
+
+  if (search == log_level_map.cend()) [[unlikely]]
+  {
+    // TODO:: Handle Error ?
+    std::abort();
+  }
+
+  return search->second;
+}
 
 /**
  * Round up a value to the nearest multiple of a specified size.

@@ -1,7 +1,7 @@
 #pragma once
 
 // Include always common first as it defines FMTBITLOG_HEADER_ONLY
-#include "bitlog/common/common.h"
+#include "bitlog/backend/backend_types.h"
 
 #include <charconv>
 #include <filesystem>
@@ -18,27 +18,6 @@
 
 namespace bitlog::detail
 {
-/**
- * @brief Structure to store metadata information for a log statement.
- */
-struct LogStatementMetadata
-{
-  std::vector<TypeDescriptorName> type_descriptors;
-  std::string file;
-  std::string function;
-  std::string log_format;
-  std::string line;
-  LogLevel level{LogLevel::None};
-};
-
-/**
- * @brief Structure to store metadata information for a logger.
- */
-struct LoggerMetadata
-{
-  std::string name;
-};
-
 /**
  * @brief Extracts the value from a line based on the starting keyword.
  *
@@ -145,7 +124,14 @@ struct LoggerMetadata
             std::abort();
           }
 
-          auto& lsm = ret_val.first.emplace_back();
+          std::string full_source_path;
+          std::string source_line;
+          std::string caller_function;
+          std::string message_format;
+          std::string _source_location;
+          std::string _source_file;
+          std::vector<TypeDescriptorName> type_descriptors;
+          LogLevel log_level;
 
           // Read rest of lines for this id
           prev_pos = ftell(log_statements_metadata_file.file_ptr());
@@ -160,28 +146,28 @@ struct LoggerMetadata
               fseek(log_statements_metadata_file.file_ptr(), prev_pos, SEEK_SET);
               break;
             }
-            else if (line.starts_with("    file"))
+            else if (line.starts_with("    full_source_path"))
             {
-              lsm.file = extract_value_from_line(line, "    file");
+              full_source_path = extract_value_from_line(line, "    full_source_path");
             }
-            else if (line.starts_with("    line"))
+            else if (line.starts_with("    source_line"))
             {
-              lsm.line = extract_value_from_line(line, "    line");
+              source_line = extract_value_from_line(line, "    source_line");
             }
-            else if (line.starts_with("    function"))
+            else if (line.starts_with("    caller_function"))
             {
-              lsm.function = extract_value_from_line(line, "    function");
+              caller_function = extract_value_from_line(line, "    caller_function");
             }
-            else if (line.starts_with("    log_format"))
+            else if (line.starts_with("    message_format"))
             {
-              lsm.log_format = extract_value_from_line(line, "    log_format");
+              message_format = extract_value_from_line(line, "    message_format");
             }
             else if (line.starts_with("    type_descriptors"))
             {
-              std::string_view const type_descriptors =
+              std::string_view const type_descriptors_str =
                 extract_value_from_line(line, "    type_descriptors");
 
-              std::vector<std::string_view> const tokens = split_string(type_descriptors, ' ');
+              std::vector<std::string_view> const tokens = split_string(type_descriptors_str, ' ');
 
               for (auto const& type_descriptor : tokens)
               {
@@ -194,7 +180,7 @@ struct LoggerMetadata
                   ec = std::make_error_code(fec2);
                 }
 
-                lsm.type_descriptors.push_back(static_cast<TypeDescriptorName>(tdn));
+                type_descriptors.push_back(static_cast<TypeDescriptorName>(tdn));
               }
             }
             else if (line.starts_with("    log_level"))
@@ -209,9 +195,12 @@ struct LoggerMetadata
                 ec = std::make_error_code(fec2);
               }
 
-              lsm.level = static_cast<LogLevel>(level);
+              log_level = static_cast<LogLevel>(level);
             }
           }
+
+          ret_val.first.emplace_back(full_source_path, source_line, caller_function, message_format,
+                                     log_level, std::move(type_descriptors));
         }
       }
     }
@@ -677,10 +666,10 @@ public:
       LogStatementMetadata const* lsm = get_log_statement_metadata(metadata_id);
 
       _fmt_args_store.clear();
-      bitlog::detail::decode(read_buffer, lsm->type_descriptors, _fmt_args_store);
+      bitlog::detail::decode(read_buffer, lsm->type_descriptors(), _fmt_args_store);
 
       _log_message.clear();
-      fmtbitlog::vformat_to(std::back_inserter(_log_message), lsm->log_format,
+      fmtbitlog::vformat_to(std::back_inserter(_log_message), lsm->message_format(),
                             fmtbitlog::basic_format_args(_fmt_args_store.data(), _fmt_args_store.size()));
 
       LoggerMetadata const* lm = get_logger_metadata(logger_id);
