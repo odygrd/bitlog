@@ -24,4 +24,6 @@ add_executable(hello2 main2.cpp)
 # Link to the library foo
 target_link_libraries(hello2 bitlog)
 #
+
+enable_testing()
 add_subdirectory(test)
