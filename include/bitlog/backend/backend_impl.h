@@ -891,12 +891,32 @@ public:
     {
       if (!queue_info.queue->empty())
       {
+        // At least one queue not empty
         return true;
       }
     }
 
-    // all queues are empty
+    // all active queues are empty, check for any queues that we haven't popped yet
     std::error_code ec;
+
+    if (!_thread_queue_manager.discover_queues(ec)) [[unlikely]]
+    {
+      // TODO:: Handle error
+    }
+
+    _thread_queue_manager.update_active_queues();
+
+    for (auto& queue_info : _thread_queue_manager.active_queues())
+    {
+      if (!queue_info.queue->empty())
+      {
+        // At least one queue not empty
+        return true;
+      }
+    }
+
+    // all active queues are empty and nothing new discovered
+    // Check if the application is still running
     if (detail::lock_file(_running_file_fd, ec))
     {
       // if we can lock the file then the application is not running

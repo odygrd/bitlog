@@ -383,15 +383,19 @@ public:
   void reset() noexcept
   {
     // user can call this when the existing queue() is full to switch to a new queue
-    std::string const next_queue_base_filename = fmtbitlog::format("{}.{}.ext", this->id, _queue_seq++);
+    std::string const next_queue_base_filename = fmtbitlog::format("{}.{}.ext", this->id, _queue_seq);
     _queue.emplace();
 
     std::error_code ec;
+    // TODO:: 5 configurable
     if (!_queue->create(_run_dir / next_queue_base_filename, _options.queue_capacity_bytes,
                         _options.memory_page_size, 5, ec))
     {
       _queue.reset();
+      return;
     }
+
+    ++_queue_seq;
   }
 
 private:

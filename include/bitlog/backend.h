@@ -102,6 +102,13 @@ public:
     _remove_inactive_application_contexts();
   }
 
+  /**
+   * @brief Check if there is an active application context.
+   *
+   * @return True if there is at least one active application context, false otherwise.
+   */
+  [[nodiscard]] bool has_active_application_context() { return !_application_contexts.empty(); };
+
 private:
   /**
    * @brief Processes all application directories for a given base directory.

@@ -53,6 +53,7 @@ enum class QueuePolicyOption
 template <QueuePolicyOption QueuePolicy, QueueTypeOption QueueType, bool UseCustomMemcpyX86>
 struct FrontendOptions
 {
+  // TODO:: make class like the rest Options
   static constexpr QueuePolicyOption queue_policy = QueuePolicy;
   static constexpr bool use_custom_memcpy_x86 = UseCustomMemcpyX86;
   using queue_type =
@@ -334,6 +335,9 @@ public:
             LogLevel Level, detail::StringLiteral LogFormat, typename... Args>
   void log(Args const&... args) const noexcept
   {
+    // TODO:: timestamp types rdtsc
+    uint64_t const timestamp = std::chrono::system_clock::now().time_since_epoch().count();
+
     // Get the queue associated with this thread
     detail::ThreadLocalQueue<frontend_options_t>& tl_queue =
       detail::get_thread_local_queue<frontend_options_t>(_run_dir, _options);
@@ -362,9 +366,6 @@ public:
 
     if (write_buffer)
     {
-      // TODO:: timestamp types rdtsc
-      uint64_t const timestamp = std::chrono::system_clock::now().time_since_epoch().count();
-
       detail::encode<frontend_options_t::use_custom_memcpy_x86>(
         write_buffer, c_style_string_lengths_array, timestamp,
         detail::marco_metadata_node<File, Function, Line, Level, LogFormat, Args...>.id, this->id, args...);
@@ -375,11 +376,50 @@ public:
 
       tl_queue.queue()->finish_write(total_args_size);
       tl_queue.queue()->commit_write();
+
+      return;
     }
-    else
+
+    // Handle full queue
+    if constexpr (TFrontendOptions::queue_policy == QueuePolicyOption::UnboundedNoLimit)
     {
-      // TODO Queue is full
-      // TODO call tl_queue.reset() to allocate a new queue then tl_queue.queue() again
+      // Create a new queue
+      tl_queue.reset();
+
+      if (!tl_queue.queue().has_value()) [[unlikely]]
+      {
+        // This can only happen if the queue creation has failed
+        // TODO:: Handle error ?
+        return;
+      }
+
+      write_buffer = tl_queue.queue()->prepare_write(total_args_size);
+
+#ifndef NDEBUG
+      uint8_t* start = write_buffer;
+#endif
+
+      if (write_buffer)
+      {
+        detail::encode<frontend_options_t::use_custom_memcpy_x86>(
+          write_buffer, c_style_string_lengths_array, timestamp,
+          detail::marco_metadata_node<File, Function, Line, Level, LogFormat, Args...>.id, this->id, args...);
+
+#ifndef NDEBUG
+        assert(write_buffer - start == total_args_size);
+#endif
+
+        tl_queue.queue()->finish_write(total_args_size);
+        tl_queue.queue()->commit_write();
+      }
+    }
+    else if constexpr (TFrontendOptions::queue_policy == QueuePolicyOption::BoundedBlocking)
+    {
+      // TODO:: Block and retry
+    }
+    else if constexpr (TFrontendOptions::queue_policy == QueuePolicyOption::BoundedDropping)
+    {
+      // TODO:: Drop log message
     }
   }
 
