@@ -6,7 +6,7 @@
 #pragma once
 
 // Include always common first as it defines FMTBITLOG_HEADER_ONLY
-#include "bitlog/backend/backend_types.h"
+#include "bitlog/common/common.h"
 
 #include <chrono>
 #include <cstdint>

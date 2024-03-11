@@ -61,7 +61,7 @@ TEST_CASE("discover_ready_queues")
   };
 
   create_file("log-statements-metadata.yaml");
-  create_file("loggers-metadata.yaml");
+  create_file("logger-metadata.yaml");
   create_file("0.0.data");
   create_file("0.0.members");
   create_file("0.0.lock");

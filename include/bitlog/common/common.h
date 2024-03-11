@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <mutex>
 #include <string>
@@ -39,9 +40,12 @@ namespace bitlog::detail
 static constexpr size_t CACHE_LINE_SIZE_BYTES{64u};
 static constexpr size_t CACHE_LINE_ALIGNED{2 * CACHE_LINE_SIZE_BYTES};
 static constexpr char const* LOG_STATEMENTS_METADATA_FILENAME{"log-statements-metadata.yaml"};
-static constexpr char const* LOGGERS_METADATA_FILENAME{"loggers-metadata.yaml"};
+static constexpr char const* LOGGERS_METADATA_FILENAME{"logger-metadata.yaml"};
 static constexpr char const* APP_RUNNING_FILENAME{"running.app-lock"};
 static constexpr char const* APP_READY_FILENAME{"init.app-ready"};
+static constexpr size_t THREAD_NAME_MAX_LEN = 16;
+
+using thread_name_array_t = std::array<char, THREAD_NAME_MAX_LEN>;
 
 /**
  * @brief Converts LogLevel to its full string representation.
@@ -139,7 +143,7 @@ template <typename T>
  *
  * @return The ID of the current thread.
  */
-[[nodiscard]] inline uint32_t thread_id() noexcept
+[[nodiscard]] inline uint32_t get_thread_id() noexcept
 {
   thread_local uint32_t thread_id{0};
   if (!thread_id)
@@ -147,6 +151,31 @@ template <typename T>
     thread_id = static_cast<uint32_t>(::syscall(SYS_gettid));
   }
   return thread_id;
+}
+
+/**
+ * @brief Get the name of the current thread.
+ *
+ * Retrieves the name of the current thread using pthread_getname_np.
+ *
+ * @return the thread name array.
+ */
+[[nodiscard]] inline thread_name_array_t get_thread_name() noexcept
+{
+
+  thread_local thread_name_array_t thread_name{'\0'};
+
+  if (thread_name[0] == '\0')
+  {
+    if (pthread_getname_np(pthread_self(), thread_name.data(), THREAD_NAME_MAX_LEN) != 0)
+    {
+      // Handle the error or log it, depending on your requirements.
+      // For simplicity, we'll set an error message here.
+      std::strncpy(thread_name.data(), "UnknownThread", THREAD_NAME_MAX_LEN);
+    }
+  }
+
+  return thread_name;
 }
 
 /**
@@ -211,6 +240,21 @@ inline bool unlock_file(int fd, std::error_code& ec) noexcept
   return true;
 }
 
+[[nodiscard]] bool fwrite_fully(void const* buffer, size_t size, FILE* file, std::error_code& ec)
+{
+  assert(file);
+
+  size_t const written = std::fwrite(buffer, sizeof(char), size, file);
+
+  if (written != size)
+  {
+    ec = std::error_code{errno, std::generic_category()};
+    return false;
+  }
+
+  return true;
+}
+
 /**
  * @brief The MetadataFile class provides functionality to read/write data to a file.
  */
@@ -240,17 +284,7 @@ public:
 
   [[nodiscard]] bool write(void const* buffer, size_t count, std::error_code& ec)
   {
-    assert(_file);
-
-    size_t const written = std::fwrite(buffer, sizeof(char), count, _file);
-
-    if (written != count)
-    {
-      ec = std::error_code{errno, std::generic_category()};
-      return false;
-    }
-
-    return true;
+    return fwrite_fully(buffer, count, _file, ec);
   }
 
   [[nodiscard]] FILE* file_ptr() noexcept { return _file; }

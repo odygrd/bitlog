@@ -6,7 +6,7 @@
 #pragma once
 
 // Include always common first as it defines FMTBITLOG_HEADER_ONLY
-#include "bitlog/backend/backend_types.h"
+#include "bitlog/common/common.h"
 
 #include <array>
 #include <chrono>
@@ -16,6 +16,7 @@
 #include <string_view>
 
 #include "bitlog/backend/cached_timestamp_builder.h"
+#include "bitlog/bundled/fmt/format.h"
 
 /** forward declarations **/
 struct tm;
@@ -46,13 +47,13 @@ private:
 public:
   /**
    * Constructor
-   * @param timestamp_format_string  format string
-   * @param timezone_type local time or gmt time, defaults to local time
+   * @param format_pattern  format string
+   * @param timezone local time or gmt time, defaults to local time
    */
-  explicit TimestampFormatter(std::string const& timestamp_format_string, Timezone timezone_type = Timezone::LocalTime)
-    : _timezone_type(timezone_type)
+  explicit TimestampFormatter(std::string format_pattern, Timezone timezone)
+    : _format_pattern(std::move(format_pattern)), _timezone(timezone)
   {
-    assert((_timezone_type == Timezone::LocalTime || _timezone_type == Timezone::GmtTime) &&
+    assert((_timezone == Timezone::LocalTime || _timezone == Timezone::GmtTime) &&
            "Invalid timezone type");
 
     // store the beginning of the found specifier
@@ -60,14 +61,14 @@ public:
 
     // look for all three special specifiers
 
-    if (size_t const search_qms = timestamp_format_string.find(SPECIFIER_NAME[AdditionalSpecifier::Qms]);
+    if (size_t const search_qms = _format_pattern.find(SPECIFIER_NAME[AdditionalSpecifier::Qms]);
         search_qms != std::string::npos)
     {
       _additional_format_specifier = AdditionalSpecifier::Qms;
       specifier_begin = search_qms;
     }
 
-    if (size_t const search_qus = timestamp_format_string.find(SPECIFIER_NAME[AdditionalSpecifier::Qus]);
+    if (size_t const search_qus = _format_pattern.find(SPECIFIER_NAME[AdditionalSpecifier::Qus]);
         search_qus != std::string::npos)
     {
       if (specifier_begin != std::string::npos)
@@ -79,7 +80,7 @@ public:
       specifier_begin = search_qus;
     }
 
-    if (size_t const search_qns = timestamp_format_string.find(SPECIFIER_NAME[AdditionalSpecifier::Qns]);
+    if (size_t const search_qns = _format_pattern.find(SPECIFIER_NAME[AdditionalSpecifier::Qns]);
         search_qns != std::string::npos)
     {
       if (specifier_begin != std::string::npos)
@@ -95,23 +96,22 @@ public:
     {
       // If no additional specifier was found then we can simply store the whole format string
       assert(_additional_format_specifier == AdditionalSpecifier::None);
-      _format_part_1 = timestamp_format_string;
+      _format_part_1 = _format_pattern;
     }
     else
     {
       // We now the index where the specifier begins so copy everything until there from beginning
-      _format_part_1 = timestamp_format_string.substr(0, specifier_begin);
+      _format_part_1 = _format_pattern.substr(0, specifier_begin);
 
       // Now copy the remaining format string, ignoring the specifier
       size_t const specifier_end = specifier_begin + SPECIFIER_LENGTH;
 
-      _format_part_2 =
-        timestamp_format_string.substr(specifier_end, timestamp_format_string.length() - specifier_end);
+      _format_part_2 = _format_pattern.substr(specifier_end, _format_pattern.length() - specifier_end);
     }
 
     // Now init two custom string from time classes with pre-formatted strings
-    _ctb_part_1.init(_format_part_1, _timezone_type);
-    _ctb_part_2.init(_format_part_2, _timezone_type);
+    _ctb_part_1.init(_format_part_1, _timezone);
+    _ctb_part_2.init(_format_part_2, _timezone);
   }
 
   /**
@@ -119,12 +119,10 @@ public:
    * @param time_since_epoch the timestamp from epoch
    * @return formatted string
    */
-  [[nodiscard]] std::string_view format_timestamp(std::chrono::nanoseconds time_since_epoch)
+  [[nodiscard]] std::string_view format_timestamp(uint64_t timestamp_ns)
   {
-    int64_t const timestamp_ns = time_since_epoch.count();
-
     // convert timestamp to seconds
-    int64_t const timestamp_secs = timestamp_ns / 1'000'000'000;
+    auto const timestamp_secs = static_cast<int64_t>(timestamp_ns / 1'000'000'000);
 
     // First always clear our cached string
     _formatted_date.clear();
@@ -174,6 +172,9 @@ public:
     return _formatted_date;
   }
 
+  [[nodiscard]] std::string const& format_pattern() const noexcept { return _format_pattern; }
+  [[nodiscard]] Timezone timezone() const noexcept { return _timezone; }
+
 private:
   /**
    * Append fractional seconds to the formatted strings
@@ -196,6 +197,8 @@ private:
   // All special specifiers have same length at the moment
   static constexpr size_t SPECIFIER_LENGTH = 4u;
 
+  std::string _format_pattern;
+
   /** As class member to avoid re-allocating **/
   std::string _formatted_date;
 
@@ -208,7 +211,7 @@ private:
   CachedTimestampBuilder _ctb_part_2;
 
   /** Timezone, Local time by default **/
-  Timezone _timezone_type;
+  Timezone _timezone;
 
   /** fractional seconds */
   AdditionalSpecifier _additional_format_specifier{AdditionalSpecifier::None};

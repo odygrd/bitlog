@@ -121,11 +121,6 @@ private:
 
     for (auto const& application_directory_entry : base_directory_it)
     {
-      if (!application_directory_entry.is_directory()) [[unlikely]]
-      {
-        continue;
-      }
-
       _process_run_directories(application_directory_entry, ec);
     }
   }
@@ -148,11 +143,6 @@ private:
 
     for (auto const& run_directory_entry : run_directory_it)
     {
-      if (!run_directory_entry.is_directory()) [[unlikely]]
-      {
-        continue;
-      }
-
       _process_single_run(run_directory_entry.path(), ec);
     }
   }

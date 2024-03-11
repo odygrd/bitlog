@@ -8,7 +8,9 @@
 // Include always common first as it defines FMTBITLOG_HEADER_ONLY
 #include "bitlog/common/common.h"
 
+#include <chrono>
 #include <cstddef>
+#include <utility>
 #include <vector>
 
 #include "bitlog/bundled/fmt/format.h"
@@ -21,13 +23,13 @@ namespace bitlog::detail
 class LogStatementMetadata
 {
 public:
-  LogStatementMetadata(std::string_view full_source_path, std::string_view source_line,
-                       std::string_view caller_function, std::string_view message_format,
-                       LogLevel log_level, std::vector<TypeDescriptorName> type_descriptors)
-    : _full_source_path(full_source_path),
-      _source_line(source_line),
-      _caller_function(caller_function),
-      _message_format(message_format),
+  LogStatementMetadata(std::string full_source_path, std::string source_line,
+                       std::string caller_function, std::string message_format, LogLevel log_level,
+                       std::vector<TypeDescriptorName> type_descriptors)
+    : _full_source_path(std::move(full_source_path)),
+      _source_line(std::move(source_line)),
+      _caller_function(std::move(caller_function)),
+      _message_format(std::move(message_format)),
       _source_location(_extract_source_location(_full_source_path, _source_line)),
       _source_file(_extract_source_file(_full_source_path)),
       _type_descriptors(std::move(type_descriptors)),
@@ -86,17 +88,84 @@ private:
 /**
  * @brief Structure to store metadata information for a logger.
  */
-struct LoggerMetadata
+class LoggerMetadata
 {
-  std::string name;
-};
+public:
+  LoggerMetadata(std::string logger_name, std::string log_record_pattern, std::string timestamp_pattern,
+                 Timezone timezone, SinkType sink_type, std::string output_file_path,
+                 uint64_t rotation_max_file_size, uint64_t rotation_time_interval,
+                 std::pair<std::chrono::hours, std::chrono::minutes> rotation_daily_at_time,
+                 uint32_t rotation_max_backup_files, FileOpenMode output_file_open_mode,
+                 FileRotationFrequency rotation_time_frequency, FileSuffix output_file_suffix,
+                 bool rotation_overwrite_oldest_files)
+    : _logger_name(std::move(logger_name)),
+      _log_record_pattern(std::move(log_record_pattern)),
+      _timestamp_pattern(std::move(timestamp_pattern)),
+      _output_file_path(std::move(output_file_path)),
+      _rotation_daily_at_time(rotation_daily_at_time),
+      _rotation_max_file_size(rotation_max_file_size),
+      _rotation_time_interval(rotation_time_interval),
+      _rotation_max_backup_files(rotation_max_backup_files),
+      _timezone(timezone),
+      _sink_type(sink_type),
+      _output_file_open_mode(output_file_open_mode),
+      _rotation_time_frequency(rotation_time_frequency),
+      _output_file_suffix(output_file_suffix),
+      _rotation_overwrite_oldest_files(rotation_overwrite_oldest_files)
+  {
+  }
 
-/**
- * Enum to select a timezone
- */
-enum class Timezone : uint8_t
-{
-  LocalTime,
-  GmtTime
+  [[nodiscard]] std::string const& logger_name() const noexcept { return _logger_name; }
+  [[nodiscard]] std::string const& log_record_pattern() const noexcept
+  {
+    return _log_record_pattern;
+  }
+  [[nodiscard]] std::string const& timestamp_pattern() const noexcept { return _timestamp_pattern; }
+  [[nodiscard]] std::string const& output_file_path() const noexcept { return _output_file_path; }
+
+  [[nodiscard]] std::pair<std::chrono::hours, std::chrono::minutes> rotation_daily_at_time() const noexcept
+  {
+    return _rotation_daily_at_time;
+  }
+  [[nodiscard]] uint64_t rotation_max_file_size() const noexcept { return _rotation_max_file_size; }
+  [[nodiscard]] uint64_t rotation_time_interval() const noexcept { return _rotation_time_interval; }
+  [[nodiscard]] uint32_t rotation_max_backup_files() const noexcept
+  {
+    return _rotation_max_backup_files;
+  }
+
+  [[nodiscard]] Timezone timezone() const noexcept { return _timezone; }
+  [[nodiscard]] SinkType sink_type() const noexcept { return _sink_type; }
+  [[nodiscard]] FileOpenMode output_file_open_mode() const noexcept
+  {
+    return _output_file_open_mode;
+  }
+  [[nodiscard]] FileRotationFrequency rotation_time_frequency() const noexcept
+  {
+    return _rotation_time_frequency;
+  }
+  [[nodiscard]] FileSuffix output_file_suffix() const noexcept { return _output_file_suffix; }
+  [[nodiscard]] bool rotation_overwrite_oldest_files() const noexcept
+  {
+    return _rotation_overwrite_oldest_files;
+  }
+
+private:
+  std::string _logger_name;
+  std::string _log_record_pattern;
+  std::string _timestamp_pattern;
+  std::string _output_file_path;
+
+  std::pair<std::chrono::hours, std::chrono::minutes> _rotation_daily_at_time;
+  uint64_t _rotation_max_file_size;
+  uint64_t _rotation_time_interval;
+  uint32_t _rotation_max_backup_files;
+
+  Timezone _timezone;
+  SinkType _sink_type;
+  FileOpenMode _output_file_open_mode;
+  FileRotationFrequency _rotation_time_frequency;
+  FileSuffix _output_file_suffix;
+  bool _rotation_overwrite_oldest_files;
 };
 } // namespace bitlog::detail

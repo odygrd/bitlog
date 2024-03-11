@@ -15,7 +15,11 @@ TEST_SUITE_BEGIN("FrontendImpl");
 TEST_CASE("create_get_logger_and_log")
 {
   frontend_manager_t frontend_manager {"create_get_logger_and_log"};
-  logger_t* test_logger = frontend_manager.logger("test_create_get_logger");
+
+  auto sink = frontend_manager.console_sink();
+  LoggerOptions lo{};
+
+  logger_t* test_logger = frontend_manager.create_logger("test_create_get_logger", *sink, lo);
 
   REQUIRE_EQ(test_logger->name(), "test_create_get_logger");
   REQUIRE_EQ(test_logger->id, 0);
@@ -26,7 +30,7 @@ TEST_CASE("create_get_logger_and_log")
   REQUIRE_EQ(test_logger->log_level(), LogLevel::Debug);
 
   // Request the same logger
-  logger_t* logger = frontend_manager.logger("test_create_get_logger");
+  logger_t* logger = frontend_manager.create_logger("test_create_get_logger", *sink, lo);
 
   REQUIRE_EQ(logger->name(), "test_create_get_logger");
   REQUIRE_EQ(logger->id, 0);

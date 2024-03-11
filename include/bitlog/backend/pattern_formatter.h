@@ -60,17 +60,6 @@ public:
   /** Main PatternFormatter class **/
 public:
   /**
-   * Constructor
-   */
-  PatternFormatter()
-  {
-    // Set the default pattern
-    _set_pattern(
-      "%(creation_time) [%(thread_id)] %(source_location:<28) LOG_%(log_level:<9) "
-      "%(logger:<12) %(log_message)");
-  }
-
-  /**
    * Constructor for a PatterFormatter with a custom format
    * @param format_pattern format_pattern a format string. The same attribute can not be used
    *                       twice in the same format pattern
@@ -92,16 +81,14 @@ public:
    * @param timestamp_format The for format of the date. Same as strftime() format with extra specifiers `%Qms` `%Qus` `Qns`
    * @param timezone The timezone of the timestamp, local_time or gmt_time
    */
-  PatternFormatter(std::string const& format_pattern, std::string const& timestamp_format, Timezone timezone)
-    : _timestamp_formatter(timestamp_format, timezone)
+  PatternFormatter(std::string format_pattern =
+                     "%(creation_time) [%(thread_id)] %(source_location:<28) LOG_%(log_level:<9) "
+                     "%(logger:<12) %(log_message)",
+                   std::string timestamp_format = "%H:%M:%S.%Qns", Timezone timezone = Timezone::LocalTime)
+    : _format_pattern(std::move(format_pattern)), _timestamp_formatter(std::move(timestamp_format), timezone)
   {
-    _set_pattern(format_pattern);
+    _set_pattern(_format_pattern);
   }
-
-  PatternFormatter(PatternFormatter const& other) = delete;
-  PatternFormatter(PatternFormatter&& other) noexcept = delete;
-  PatternFormatter& operator=(PatternFormatter const& other) = delete;
-  PatternFormatter& operator=(PatternFormatter&& other) noexcept = delete;
 
   /**
    * Destructor
@@ -116,7 +103,7 @@ public:
    * source file, caller function, log level, thread information, process ID, and the log message itself.
    *
    * @param log_statement_metadata The metadata of the log statement.
-   * @param timestamp The timestamp of the log statement in nanoseconds since epoch.
+   * @param timestamp_ns The timestamp of the log statement in nanoseconds since epoch.
    * @param thread_id The ID of the thread that logged the message.
    * @param thread_name The name of the thread that logged the message.
    * @param process_id The ID of the process that logged the message.
@@ -127,14 +114,14 @@ public:
    * @note The function clears any existing buffer before formatting a new log message.
    */
   [[nodiscard]] std::string_view format(LogStatementMetadata const& log_statement_metadata,
-                                        std::chrono::nanoseconds timestamp, std::string const& thread_id,
-                                        std::string const& thread_name, std::string const& process_id,
+                                        uint64_t timestamp_ns, uint32_t thread_id,
+                                        thread_name_array_t const& thread_name, std::string const& process_id,
                                         std::string const& logger, std::string_view log_message)
   {
     // clear out existing buffer
     _formatted_log_log_message.clear();
 
-    if (_format.empty())
+    if (_fmt_format_pattern.empty())
     {
       // nothing to format when the given format is empty. This is useful e.g. in the
       // JsonFileHandler if we want to skip formatting the main log_message
@@ -143,7 +130,7 @@ public:
 
     if (_is_set_in_pattern[Attribute::CreationTime])
     {
-      _set_arg_val<Attribute::CreationTime>(_timestamp_formatter.format_timestamp(timestamp));
+      _set_arg_val<Attribute::CreationTime>(_timestamp_formatter.format_timestamp(timestamp_ns));
     }
 
     if (_is_set_in_pattern[Attribute::SourceFile])
@@ -183,12 +170,12 @@ public:
 
     if (_is_set_in_pattern[Attribute::ThreadId])
     {
-      _set_arg_val<Attribute::ThreadId>(thread_id);
+      _set_arg_val<Attribute::ThreadId>(fmtbitlog::to_string(thread_id));
     }
 
     if (_is_set_in_pattern[Attribute::ThreadName])
     {
-      _set_arg_val<Attribute::ThreadName>(thread_name);
+      _set_arg_val<Attribute::ThreadName>(std::string_view{thread_name.data()});
     }
 
     if (_is_set_in_pattern[Attribute::ProcessId])
@@ -203,10 +190,16 @@ public:
 
     _set_arg_val<Attribute::LogMessage>(log_message);
 
-    fmtbitlog::vformat_to(std::back_inserter(_formatted_log_log_message), _format,
+    fmtbitlog::vformat_to(std::back_inserter(_formatted_log_log_message), _fmt_format_pattern,
                           fmtbitlog::basic_format_args(_args.data(), static_cast<int>(_args.size())));
 
     return std::string_view{_formatted_log_log_message.data(), _formatted_log_log_message.size()};
+  }
+
+  [[nodiscard]] std::string const& format_pattern() const noexcept { return _format_pattern; }
+  [[nodiscard]] TimestampFormatter const& timestamp_formatter() const noexcept
+  {
+    return _timestamp_formatter;
   }
 
 private:
@@ -221,8 +214,8 @@ private:
 
     // the order we pass the arguments here must match with the order of Attribute enum
     using namespace fmtbitlog::literals;
-    std::tie(_format, _order_index) = _generate_fmt_format_string(
-      _is_set_in_pattern, std::string{format_pattern}, "creation_time"_a = "", "source_file"_a = "",
+    std::tie(_fmt_format_pattern, _order_index) = _generate_fmt_format_string(
+      _is_set_in_pattern, format_pattern, "creation_time"_a = "", "source_file"_a = "",
       "caller_function"_a = "", "log_level"_a = "", "log_level_id"_a = "", "source_line"_a = "",
       "logger"_a = "", "full_source_path"_a = "", "thread_id"_a = "", "thread_name"_a = "",
       "process_id"_a = "", "source_location"_a = "", "log_message"_a = "");
@@ -443,7 +436,8 @@ private:
   }
 
 private:
-  std::string _format;
+  std::string _format_pattern;
+  std::string _fmt_format_pattern;
 
   /** Each named argument in the format_pattern is mapped in order to this array **/
   std::array<size_t, Attribute::ATTR_NR_ITEMS> _order_index{};

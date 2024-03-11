@@ -34,6 +34,8 @@ private:
     integer_type capacity;
     integer_type mask;
     integer_type bytes_per_batch;
+    uint32_t thread_id;
+    thread_name_array_t thread_name;
 
     alignas(CACHE_LINE_ALIGNED) std::atomic<integer_type> atomic_writer_pos;
     alignas(CACHE_LINE_ALIGNED) integer_type writer_pos;
@@ -118,6 +120,8 @@ public:
                 _metadata->mask = capacity - 1;
                 _metadata->bytes_per_batch =
                   static_cast<integer_type>(capacity * static_cast<double>(reader_store_percentage) / 100.0);
+                _metadata->thread_id = get_thread_id();
+                _metadata->thread_name = get_thread_name();
                 _metadata->atomic_writer_pos = 0;
                 _metadata->writer_pos = 0;
                 _metadata->last_flushed_writer_pos = 0;
@@ -496,6 +500,21 @@ public:
    * @return An integer representing the storage capacity.
    */
   [[nodiscard]] integer_type capacity() const noexcept { return _metadata->capacity; }
+
+  /**
+   * @brief Retrieves the thread_id of the queue creator
+   * @return An integer representing the thread_id
+   */
+  [[nodiscard]] uint32_t thread_id() const noexcept { return _metadata->thread_id; }
+
+  /**
+   * @brief Retrieves the get_thread_name of the queue creator
+   * @return An array representing the thread_id
+   */
+  [[nodiscard]] thread_name_array_t const& thread_name() const noexcept
+  {
+    return _metadata->thread_name;
+  }
 
 private:
   /**

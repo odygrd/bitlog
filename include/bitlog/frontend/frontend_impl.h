@@ -30,6 +30,8 @@ struct UniqueId
 {
 public:
   UniqueId() : id(_gen_id()) {}
+  UniqueId(UniqueId&& other) noexcept : id(other.id){};
+
   uint32_t const id;
 
 private:
@@ -250,7 +252,7 @@ MacroMetadataNode marco_metadata_node{get_macro_metadata<File, Function, Line, L
  * @param path The path where the file will be written.
  * @return True when the file was successfully created, false otherwise
  */
-[[nodiscard]] inline bool create_loggers_metadata_file(std::filesystem::path const& path) noexcept
+[[nodiscard]] inline bool create_logger_metadata_file(std::filesystem::path const& path) noexcept
 {
   MetadataFile metadata_writer;
 
@@ -277,8 +279,14 @@ MacroMetadataNode marco_metadata_node{get_macro_metadata<File, Function, Line, L
  * @param path The path where the file will be written.
  * @return True when the file was successfully created, false otherwise
  */
-[[nodiscard]] inline bool append_loggers_metadata_file(std::filesystem::path const& path, uint32_t logger_id,
-                                                       std::string const& logger_name) noexcept
+[[nodiscard]] inline bool append_logger_metadata_file(
+  std::filesystem::path const& path, uint32_t logger_id, std::string const& logger_name,
+  std::string const& log_record_pattern, std::string const& timestamp_pattern, Timezone timezone,
+  SinkType sink_type, std::string const& output_file_path = {},
+  uint64_t rotation_max_file_size = {}, uint64_t rotation_time_interval = {},
+  std::string const& rotation_daily_at_time = {}, uint32_t rotation_max_backup_files = {},
+  FileOpenMode output_file_open_mode = {}, FileRotationFrequency rotation_time_frequency = {},
+  FileSuffix output_file_suffix = {}, bool rotation_overwrite_oldest_files = {}) noexcept
 {
   MetadataFile metadata_writer;
 
@@ -287,11 +295,39 @@ MacroMetadataNode marco_metadata_node{get_macro_metadata<File, Function, Line, L
     return false;
   }
 
-  std::string const file_data = fmtbitlog::format("  - id: {}\n    name: {}\n", logger_id, logger_name);
+  std::string file_data;
+
+  if (sink_type == SinkType::File)
+  {
+    file_data = fmtbitlog::format(
+      "  - id: {}\n    name: {}\n    log_record_pattern: {}\n    timestamp_pattern: {}\n    "
+      "timezone: {}\n    sink_type: {}\n    output_file_path: {}\n    "
+      "rotation_max_file_size: {}\n    rotation_time_interval: {}\n    "
+      "rotation_daily_at_time: {}\n    rotation_max_backup_files: {}\n    "
+      "output_file_open_mode: {}\n    rotation_time_frequency: {}\n    "
+      "output_file_suffix: {}\n    rotation_overwrite_oldest_files: {}\n",
+      logger_id, logger_name, log_record_pattern.empty() ? "\"\"" : log_record_pattern,
+      timestamp_pattern.empty() ? "\"\"" : timestamp_pattern, get_timezone_string(timezone),
+      get_sink_type_string(sink_type), output_file_path.empty() ? "\"\"" : output_file_path, rotation_max_file_size,
+      rotation_time_interval, rotation_daily_at_time.empty() ? "\"\"" : rotation_daily_at_time,
+      rotation_max_backup_files, get_file_open_mode_string(output_file_open_mode),
+      get_file_rotation_frequency_string(rotation_time_frequency),
+      get_file_suffix_string(output_file_suffix), rotation_overwrite_oldest_files);
+  }
+  else if (sink_type == SinkType::Console)
+  {
+    file_data = fmtbitlog::format(
+      "  - id: {}\n    name: {}\n    log_record_pattern: {}\n    timestamp_pattern: {}\n    "
+      "timezone: {}\n    sink_type: {}\n",
+      logger_id, logger_name, log_record_pattern.empty() ? "\"\"" : log_record_pattern,
+      timestamp_pattern.empty() ? "\"\"" : timestamp_pattern, get_timezone_string(timezone),
+      get_sink_type_string(sink_type));
+  }
 
   std::error_code ec;
   if (!metadata_writer.write(file_data.data(), file_data.size(), ec))
   {
+    // TODO:: report/log ec ?
     return false;
   }
 

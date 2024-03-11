@@ -1,15 +1,19 @@
 #pragma once
 
 // Include always common first as it defines FMTBITLOG_HEADER_ONLY
-#include "bitlog/backend/backend_types.h"
+#include "bitlog/common/common.h"
 
 #include <charconv>
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
+#include "bitlog/backend/backend_types.h"
+#include "bitlog/backend/pattern_formatter.h"
+#include "bitlog/backend/sink.h"
 #include "bitlog/bundled/fmt/format.h"
 #include "bitlog/common/bounded_queue.h"
 #include "decode.h"
@@ -128,8 +132,6 @@ namespace bitlog::detail
           std::string source_line;
           std::string caller_function;
           std::string message_format;
-          std::string _source_location;
-          std::string _source_file;
           std::vector<TypeDescriptorName> type_descriptors;
           LogLevel log_level;
 
@@ -199,7 +201,8 @@ namespace bitlog::detail
             }
           }
 
-          ret_val.first.emplace_back(full_source_path, source_line, caller_function, message_format,
+          ret_val.first.emplace_back(std::move(full_source_path), std::move(source_line),
+                                     std::move(caller_function), std::move(message_format),
                                      log_level, std::move(type_descriptors));
         }
       }
@@ -219,8 +222,8 @@ namespace bitlog::detail
  * @param ec An output parameter for error codes.
  * @return A vector containing the logger metadata.
  */
-[[nodiscard]] inline std::vector<LoggerMetadata> read_loggers_metadata_file(std::filesystem::path const& path,
-                                                                            std::error_code& ec)
+[[nodiscard]] inline std::vector<LoggerMetadata> read_logger_metadata_file(std::filesystem::path const& path,
+                                                                           std::error_code& ec)
 {
   MetadataFile logger_metadata_file;
   std::vector<LoggerMetadata> ret_val;
@@ -268,7 +271,20 @@ namespace bitlog::detail
             std::abort();
           }
 
-          auto& lm = ret_val.emplace_back();
+          std::string name;
+          std::string log_record_pattern;
+          std::string timestamp_pattern;
+          Timezone timezone;
+          SinkType sink_type;
+          std::string output_file_path;
+          uint64_t rotation_max_file_size = 0;
+          uint64_t rotation_time_interval = 0;
+          std::pair<std::chrono::hours, std::chrono::minutes> rotation_daily_at_time;
+          uint32_t rotation_max_backup_files = std::numeric_limits<uint32_t>::max();
+          FileOpenMode output_file_open_mode = FileOpenMode::Write;
+          FileRotationFrequency rotation_time_frequency = FileRotationFrequency::Disabled;
+          FileSuffix output_file_suffix = FileSuffix::None;
+          bool rotation_overwrite_oldest_files = true;
 
           // Read rest of lines for this id
           prev_pos = ftell(logger_metadata_file.file_ptr());
@@ -284,9 +300,144 @@ namespace bitlog::detail
             }
             else if (line.starts_with("    name"))
             {
-              lm.name = extract_value_from_line(line, "    name");
+              name = extract_value_from_line(line, "    name");
+            }
+            else if (line.starts_with("    log_record_pattern"))
+            {
+              log_record_pattern = extract_value_from_line(line, "    log_record_pattern");
+            }
+            else if (line.starts_with("    timestamp_pattern"))
+            {
+              timestamp_pattern = extract_value_from_line(line, "    timestamp_pattern");
+            }
+            else if (line.starts_with("    timezone"))
+            {
+              timezone =
+                get_timezone_enum(std::string{extract_value_from_line(line, "    timezone")});
+            }
+            else if (line.starts_with("    sink_type"))
+            {
+              sink_type =
+                get_sink_type_enum(std::string{extract_value_from_line(line, "    sink_type")});
+            }
+            else if (line.starts_with("    output_file_path"))
+            {
+              output_file_path = extract_value_from_line(line, "    output_file_path");
+            }
+            else if (line.starts_with("    rotation_max_file_size"))
+            {
+              std::string_view const rotation_max_file_size_str =
+                extract_value_from_line(line, "    rotation_max_file_size");
+              auto [ptr, fec] =
+                std::from_chars(rotation_max_file_size_str.data(),
+                                rotation_max_file_size_str.data() + rotation_max_file_size_str.length(),
+                                rotation_max_file_size);
+
+              if ((fec == std::errc::invalid_argument) || (fec == std::errc::result_out_of_range))
+              {
+                ec = std::make_error_code(fec);
+                // TODO:: Handle ec
+                continue;
+              }
+            }
+            else if (line.starts_with("    rotation_time_interval"))
+            {
+              std::string_view const rotation_time_interval_str =
+                extract_value_from_line(line, "    rotation_time_interval");
+              auto [ptr, fec] =
+                std::from_chars(rotation_time_interval_str.data(),
+                                rotation_time_interval_str.data() + rotation_time_interval_str.length(),
+                                rotation_time_interval);
+
+              if ((fec == std::errc::invalid_argument) || (fec == std::errc::result_out_of_range))
+              {
+                ec = std::make_error_code(fec);
+                // TODO:: Handle ec
+                continue;
+              }
+            }
+            else if (line.starts_with("    rotation_daily_at_time"))
+            {
+              auto const rotation_daily_at_time_str =
+                std::string{extract_value_from_line(line, "    rotation_daily_at_time")};
+
+              std::vector<std::string> tokens;
+              std::string token;
+              std::istringstream token_stream(rotation_daily_at_time_str);
+
+              while (std::getline(token_stream, token, ':'))
+              {
+                tokens.push_back(token);
+              }
+
+              if (tokens.size() != 2)
+              {
+                // TODO:: HAndle error
+                continue;
+              }
+
+              for (auto const& parsed_token : tokens)
+              {
+                if (parsed_token.size() != 2)
+                {
+                  // TODO:: HAndle error
+                  continue;
+                }
+              }
+
+              rotation_daily_at_time = std::make_pair(std::chrono::hours{std::stoi(tokens[0])},
+                                                      std::chrono::minutes{std::stoi(tokens[1])});
+
+              if ((rotation_daily_at_time.first > std::chrono::hours{23}) ||
+                  (rotation_daily_at_time.second > std::chrono::minutes{59}))
+              {
+                // TODO:: HAndle error
+                continue;
+              }
+            }
+            else if (line.starts_with("    rotation_max_backup_files"))
+            {
+              std::string_view const rotation_max_backup_files_str =
+                extract_value_from_line(line, "    rotation_max_backup_files");
+              auto [ptr, fec] = std::from_chars(
+                rotation_max_backup_files_str.data(),
+                rotation_max_backup_files_str.data() + rotation_max_backup_files_str.length(),
+                rotation_max_backup_files);
+
+              if ((fec == std::errc::invalid_argument) || (fec == std::errc::result_out_of_range))
+              {
+                ec = std::make_error_code(fec);
+                // TODO:: Handle ec
+                continue;
+              }
+            }
+            else if (line.starts_with("    output_file_open_mode"))
+            {
+              output_file_open_mode = get_file_open_mode_enum(
+                std::string{extract_value_from_line(line, "    output_file_open_mode")});
+            }
+            else if (line.starts_with("    rotation_time_frequency"))
+            {
+              rotation_time_frequency = get_file_rotation_frequency_enum(
+                std::string{extract_value_from_line(line, "    rotation_time_frequency")});
+            }
+            else if (line.starts_with("    output_file_suffix"))
+            {
+              output_file_suffix = get_file_suffix_enum(
+                std::string{extract_value_from_line(line, "    output_file_suffix")});
+            }
+            else if (line.starts_with("    rotation_overwrite_oldest_files"))
+            {
+              rotation_overwrite_oldest_files =
+                (extract_value_from_line(line, "    rotation_overwrite_oldest_files") == "true");
             }
           }
+
+          ret_val.emplace_back(std::move(name), std::move(log_record_pattern),
+                               std::move(timestamp_pattern), timezone, sink_type, output_file_path,
+                               rotation_max_file_size, rotation_time_interval, rotation_daily_at_time,
+                               rotation_max_backup_files, output_file_open_mode, rotation_time_frequency,
+                               output_file_suffix, rotation_overwrite_oldest_files);
         }
       }
     }
@@ -417,13 +568,6 @@ public:
 
     for (auto const& file_entry : run_dir_it)
     {
-      // Look into all the files under the current run directory
-      if (!file_entry.is_regular_file()) [[unlikely]]
-      {
-        // should never happen but just in case
-        continue;
-      }
-
       // look for .ready files, e.g 0.0.ready, 1.0.ready (thread_num.sequence.ready)
       if (file_entry.path().extension() == ".ready")
       {
@@ -567,6 +711,24 @@ private:
   backend_options_t const& _options;
 };
 
+class LoggerContext
+{
+public:
+  LoggerContext(std::string logger_name, PatternFormatter* pattern_formater, SinkBase* sink)
+    : _logger_name(std::move(logger_name)), _pattern_formatter(pattern_formater), _sink(sink)
+  {
+  }
+
+  [[nodiscard]] std::string const& logger_name() const noexcept { return _logger_name; }
+  [[nodiscard]] PatternFormatter* pattern_formatter() const noexcept { return _pattern_formatter; }
+  [[nodiscard]] SinkBase* sink() const noexcept { return _sink; }
+
+private:
+  std::string _logger_name;
+  PatternFormatter* _pattern_formatter;
+  SinkBase* _sink;
+};
+
 /**
  * @brief Application context class template.
  *
@@ -642,43 +804,73 @@ public:
     {
       uint8_t const* read_buffer = queue_info.queue->prepare_read();
 
-      if (!read_buffer)
+      size_t const queue_capacity = queue_info.queue->capacity();
+      size_t total_bytes_read{0};
+
+      // read max of one full queue otherwise we can get stuck here forever if the
+      // producer keeps producing
+      while ((total_bytes_read < queue_capacity) && read_buffer)
       {
-        continue;
+        uint8_t const* read_buffer_begin = read_buffer;
+
+        // Read a log message from the buffer
+        // TODO:: Use custom memcpy ?
+        uint64_t timestamp;
+        std::memcpy(&timestamp, read_buffer, sizeof(timestamp));
+        read_buffer += sizeof(timestamp);
+
+        uint32_t metadata_id;
+        std::memcpy(&metadata_id, read_buffer, sizeof(metadata_id));
+        read_buffer += sizeof(metadata_id);
+
+        uint32_t logger_id;
+        std::memcpy(&logger_id, read_buffer, sizeof(logger_id));
+        read_buffer += sizeof(logger_id);
+
+        LogStatementMetadata const* lsm = get_log_statement_metadata(metadata_id);
+
+        if (!lsm) [[unlikely]]
+        {
+          // TODO:: Handle Error
+          std::abort();
+        }
+
+        _log_message_fmt_args_store.clear();
+        bitlog::detail::decode(read_buffer, lsm->type_descriptors(), _log_message_fmt_args_store);
+
+        _log_message.clear();
+        fmtbitlog::vformat_to(std::back_inserter(_log_message), lsm->message_format(),
+                              fmtbitlog::basic_format_args(_log_message_fmt_args_store.data(),
+                                                           _log_message_fmt_args_store.size()));
+
+        LoggerContext* logger_context = get_logger_context(logger_id);
+
+        std::string_view const formatted_statement = logger_context->pattern_formatter()->format(
+          *lsm, timestamp, queue_info.queue->thread_id(), queue_info.queue->thread_name(), _process_id,
+          logger_context->logger_name(), std::string_view{_log_message.data(), _log_message.size()});
+
+        logger_context->sink()->write(formatted_statement, *lsm);
+
+        // finished reading
+        assert(read_buffer >= read_buffer_begin);
+        size_t const read_size = read_buffer - read_buffer_begin;
+        queue_info.queue->finish_read(read_size);
+        total_bytes_read += read_size;
+
+        // Read next message
+        read_buffer = queue_info.queue->prepare_read();
       }
 
-      uint8_t const* read_buffer_begin = read_buffer;
+      if (total_bytes_read != 0)
+      {
+        // we read something from the queue, we commit all the reads together at the end
+        queue_info.queue->commit_read();
+      }
+    }
 
-      // Read a log message from the buffer
-      // TODO:: Use custom memcpy ?
-      uint64_t timestamp;
-      std::memcpy(&timestamp, read_buffer, sizeof(timestamp));
-      read_buffer += sizeof(timestamp);
-
-      uint32_t metadata_id;
-      std::memcpy(&metadata_id, read_buffer, sizeof(metadata_id));
-      read_buffer += sizeof(metadata_id);
-
-      uint32_t logger_id;
-      std::memcpy(&logger_id, read_buffer, sizeof(logger_id));
-      read_buffer += sizeof(logger_id);
-
-      LogStatementMetadata const* lsm = get_log_statement_metadata(metadata_id);
-
-      _fmt_args_store.clear();
-      bitlog::detail::decode(read_buffer, lsm->type_descriptors(), _fmt_args_store);
-
-      _log_message.clear();
-      fmtbitlog::vformat_to(std::back_inserter(_log_message), lsm->message_format(),
-                            fmtbitlog::basic_format_args(_fmt_args_store.data(), _fmt_args_store.size()));
-
-      LoggerMetadata const* lm = get_logger_metadata(logger_id);
-
-      std::cout << "LOG: ts " << timestamp << " " << lm->name << " "
-                << std::string_view{_log_message.data(), _log_message.size()} << std::endl;
-
-      queue_info.queue->finish_read(read_buffer - read_buffer_begin);
-      queue_info.queue->commit_read();
+    for (auto& sink : _sinks)
+    {
+      sink->flush();
     }
   }
 
@@ -738,35 +930,117 @@ public:
 
 private:
   /**
-   * @brief Gets logger metadata by ID.
+   * @brief Gets logger context by ID.
    *
-   * If the logger ID is not found, attempts to reload metadata from file.
+   * If the logger ID is not found, attempts to reload metadata from file and create the missing logger contexts
    *
    * @param id Logger ID.
-   * @return Pointer to the logger metadata if found; otherwise, nullptr.
+   * @return Pointer to the logger context if found; otherwise, nullptr.
    */
-  [[nodiscard]] LoggerMetadata const* get_logger_metadata(uint32_t id)
+  [[nodiscard]] LoggerContext* get_logger_context(uint32_t id)
   {
-    if (id >= _logger_metadata.size())
+    if (id >= _logger_contexts.size())
     {
       // We do not have this logger, we want to try to reload the file
       std::error_code ec;
-      auto loggers_metadata = detail::read_loggers_metadata_file(_run_dir, ec);
+      std::vector<LoggerMetadata> const logger_metadata = detail::read_logger_metadata_file(_run_dir, ec);
 
       if (ec) [[unlikely]]
       {
         return nullptr;
       }
 
-      _logger_metadata = std::move(loggers_metadata);
+      // Process only the logger contexts we do not already have
+      size_t const logger_contexts_size = _logger_contexts.size();
+      assert(logger_metadata.size() >= logger_contexts_size);
+      for (size_t i = logger_contexts_size; i < logger_metadata.size(); ++i)
+      {
+        LoggerMetadata const& lm = logger_metadata[i];
+
+        PatternFormatter* pattern_formatter{nullptr};
+        SinkBase* sink{nullptr};
+
+        // Find or create the pattern formatter
+        auto pattern_formatter_it =
+          std::find_if(std::begin(_pattern_formatters), std::end(_pattern_formatters),
+                       [&lm](std::unique_ptr<PatternFormatter> const& elem)
+                       {
+                         return elem->format_pattern() == lm.log_record_pattern() &&
+                           elem->timestamp_formatter().format_pattern() == lm.timestamp_pattern() &&
+                           elem->timestamp_formatter().timezone() == lm.timezone();
+                       });
+
+        if (pattern_formatter_it != std::end(_pattern_formatters))
+        {
+          pattern_formatter = pattern_formatter_it->get();
+        }
+        else
+        {
+          _pattern_formatters.push_back(std::make_unique<PatternFormatter>(
+            lm.log_record_pattern(), lm.timestamp_pattern(), lm.timezone()));
+          pattern_formatter = _pattern_formatters.back().get();
+        }
+
+        // Find or create the sink
+        auto sink_it = std::find_if(std::begin(_sinks), std::end(_sinks),
+                                    [&lm](std::unique_ptr<SinkBase> const& elem)
+                                    {
+                                      if (lm.sink_type() == SinkType::Console)
+                                      {
+                                        return elem->type() == SinkType::Console;
+                                      }
+                                      else if (lm.sink_type() == SinkType::File)
+                                      {
+                                        return elem->type() == SinkType::File &&
+                                          elem->name() == lm.output_file_path();
+                                      }
+                                      else
+                                      {
+                                        // TODO:: unreachable
+                                        std::abort();
+                                        // unreachable
+                                        return true;
+                                      }
+                                    });
+
+        if (sink_it != std::end(_sinks))
+        {
+          sink = sink_it->get();
+        }
+        else
+        {
+          // Create new sink
+          if (lm.sink_type() == SinkType::Console)
+          {
+            _sinks.push_back(std::make_unique<ConsoleSink>());
+            sink = _sinks.back().get();
+          }
+          else if (lm.sink_type() == SinkType::File)
+          {
+            auto file_sink = std::make_unique<FileSink>();
+            bool const ok = file_sink->init(lm.output_file_path(), lm.output_file_open_mode());
+
+            if (!ok)
+            {
+              // TODO:: Handle error
+              continue;
+            }
+
+            _sinks.push_back(std::move(file_sink));
+            sink = _sinks.back().get();
+          }
+        }
+
+        _logger_contexts.emplace_back(lm.logger_name(), pattern_formatter, sink);
+      }
     }
 
-    if (id >= _logger_metadata.size()) [[unlikely]]
+    if (id >= _logger_contexts.size()) [[unlikely]]
     {
       return nullptr;
     }
 
-    return &_logger_metadata[id];
+    return &_logger_contexts[id];
   }
 
   /**
@@ -789,10 +1063,12 @@ private:
 
 private:
   std::vector<LogStatementMetadata> _log_statement_metadata;
-  std::vector<LoggerMetadata> _logger_metadata;
-  std::vector<fmtbitlog::basic_format_arg<fmtbitlog::format_context>> _fmt_args_store;
   ThreadQueueManager<backend_options_t> _thread_queue_manager;
+  std::vector<fmtbitlog::basic_format_arg<fmtbitlog::format_context>> _log_message_fmt_args_store;
   fmtbitlog::basic_memory_buffer<char, 1024> _log_message;
+  std::vector<std::unique_ptr<PatternFormatter>> _pattern_formatters;
+  std::vector<std::unique_ptr<SinkBase>> _sinks;
+  std::vector<LoggerContext> _logger_contexts;
   std::string _run_dir;
   std::string _application_id;
   std::string _start_ts;

@@ -5,10 +5,10 @@
 using namespace bitlog;
 using namespace bitlog::detail;
 
-static constexpr char const* thread_name = "test_thread";
+static constexpr thread_name_array_t thread_name = {"test_thread"};
 static constexpr char const* process_id = "123";
-static constexpr std::chrono::nanoseconds ts{1579815761020123000};
-static constexpr char const* thread_id_str = "31341";
+static constexpr uint64_t ts{1579815761020123000};
+static constexpr uint32_t thread_id = 31341;
 static constexpr char const* logger_name = "test_logger";
 
 TEST_SUITE_BEGIN("PatternFormatter");
@@ -26,7 +26,7 @@ TEST_CASE("default_pattern_formatter")
 
   PatternFormatter default_pattern_formatter{};
   std::string_view const formatted_log_statement =
-    default_pattern_formatter.format(lsm, ts, thread_id_str, thread_name, process_id, logger_name,
+    default_pattern_formatter.format(lsm, ts, thread_id, thread_name, process_id, logger_name,
                                      std::string_view{log_message.data(), log_message.size()});
 
   // Default pattern formatter is using local time to convert the timestamp to timezone, in this test we ignore the timestamp
@@ -51,7 +51,7 @@ TEST_CASE("custom_pattern_message_only")
 
   PatternFormatter custom_pattern_formatter{"%(log_level_id) %(log_message)", "%H:%M:%S.%Qns", Timezone::GmtTime};
   std::string_view const formatted_log_statement =
-    custom_pattern_formatter.format(lsm, ts, thread_id_str, thread_name, process_id, logger_name,
+    custom_pattern_formatter.format(lsm, ts, thread_id, thread_name, process_id, logger_name,
                                     std::string_view{log_message.data(), log_message.size()});
 
   std::string const expected_string = "D This the pattern formatter 12.34\n";
@@ -76,7 +76,7 @@ TEST_CASE("custom_pattern_timestamp_precision_nanoseconds")
     "%(log_message) [%(caller_function)]",
     "%m-%d-%Y %H:%M:%S.%Qns", Timezone::GmtTime};
   std::string_view const formatted_log_statement =
-    custom_pattern_formatter.format(lsm, ts, thread_id_str, thread_name, process_id, logger_name,
+    custom_pattern_formatter.format(lsm, ts, thread_id, thread_name, process_id, logger_name,
                                     std::string_view{log_message.data(), log_message.size()});
 
   std::string const expected_string =
@@ -102,7 +102,7 @@ TEST_CASE("custom_pattern_timestamp_precision_microseconds")
     "%(log_message) [%(caller_function)]",
     "%m-%d-%Y %H:%M:%S.%Qus", Timezone::GmtTime};
   std::string_view const formatted_log_statement =
-    custom_pattern_formatter.format(lsm, ts, thread_id_str, thread_name, process_id, logger_name,
+    custom_pattern_formatter.format(lsm, ts, thread_id, thread_name, process_id, logger_name,
                                     std::string_view{log_message.data(), log_message.size()});
 
   std::string const expected_string =
@@ -128,7 +128,7 @@ TEST_CASE("custom_pattern_timestamp_precision_milliseconds")
     "%(log_message) [%(caller_function)]",
     "%m-%d-%Y %H:%M:%S.%Qms", Timezone::GmtTime};
   std::string_view const formatted_log_statement =
-    custom_pattern_formatter.format(lsm, ts, thread_id_str, thread_name, process_id, logger_name,
+    custom_pattern_formatter.format(lsm, ts, thread_id, thread_name, process_id, logger_name,
                                     std::string_view{log_message.data(), log_message.size()});
 
   std::string const expected_string =
@@ -154,7 +154,7 @@ TEST_CASE("custom_pattern_timestamp_precision_none")
     "%(log_message) [%(caller_function)]",
     "%m-%d-%Y %H:%M:%S", Timezone::GmtTime};
   std::string_view const formatted_log_statement =
-    custom_pattern_formatter.format(lsm, ts, thread_id_str, thread_name, process_id, logger_name,
+    custom_pattern_formatter.format(lsm, ts, thread_id, thread_name, process_id, logger_name,
                                     std::string_view{log_message.data(), log_message.size()});
 
   std::string const expected_string =
@@ -184,7 +184,7 @@ TEST_CASE("custom_pattern_timestamp_strftime_reallocation_on_format_string_2")
                          "pattern", 1234);
 
     std::string_view const formatted_log_statement =
-      custom_pattern_formatter.format(lsm, ts, thread_id_str, thread_name, process_id, logger_name,
+      custom_pattern_formatter.format(lsm, ts, thread_id, thread_name, process_id, logger_name,
                                       std::string_view{log_message.data(), log_message.size()});
 
     std::string const expected_string =
@@ -215,7 +215,7 @@ TEST_CASE("custom_pattern_timestamp_strftime_reallocation_when_adding_fractional
                          "pattern", 1234);
 
     std::string_view const formatted_log_statement =
-      custom_pattern_formatter.format(lsm, ts, thread_id_str, thread_name, process_id, logger_name,
+      custom_pattern_formatter.format(lsm, ts, thread_id, thread_name, process_id, logger_name,
                                       std::string_view{log_message.data(), log_message.size()});
 
     std::string const expected_string =
@@ -244,7 +244,7 @@ TEST_CASE("custom_pattern")
     "%(log_message)",
     "%m-%d-%Y %H:%M:%S.%Qns", Timezone::GmtTime};
   std::string_view const formatted_log_statement =
-    custom_pattern_formatter.format(lsm, ts, thread_id_str, thread_name, process_id, logger_name,
+    custom_pattern_formatter.format(lsm, ts, thread_id, thread_name, process_id, logger_name,
                                     std::string_view{log_message.data(), log_message.size()});
 
   std::string const expected_string =
@@ -271,7 +271,7 @@ TEST_CASE("custom_pattern_part_3_no_format_specifiers")
   PatternFormatter custom_pattern_formatter{"|LOG_%(log_level)|%(logger)|%(log_message)|EOM|",
                                             "%H:%M:%S", Timezone::GmtTime};
   std::string_view const formatted_log_statement =
-    custom_pattern_formatter.format(lsm, ts, thread_id_str, thread_name, process_id, logger_name,
+    custom_pattern_formatter.format(lsm, ts, thread_id, thread_name, process_id, logger_name,
                                     std::string_view{log_message.data(), log_message.size()});
 
   std::string const expected_string =
