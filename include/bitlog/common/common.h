@@ -34,6 +34,10 @@
   #define BITLOG_ALWAYS_INLINE
 #endif
 
+#if defined(BITLOG_X86_ARCHITECTURE_ENABLED)
+  #include <x86intrin.h>
+#endif
+
 namespace bitlog::detail
 {
 /** Constants **/
@@ -325,4 +329,10 @@ private:
   return base_dir.empty() ? (std::filesystem::exists("/dev/shm", ec) ? "/dev/shm/bitlog" : "/tmp/bitlog")
                           : base_dir;
 }
+
+/**
+ * Get the TSC counter
+ * @return rdtsc timestamp
+ */
+[[nodiscard]] inline uint64_t rdtsc() noexcept { return __rdtsc(); }
 } // namespace bitlog::detail

@@ -7,8 +7,25 @@
 
 #include <ctime>
 
+#include <sched.h>
+
 namespace bitlog::detail
 {
+
+/***/
+void set_cpu_affinity(uint16_t cpu_id)
+{
+  cpu_set_t cpuset;
+  CPU_ZERO(&cpuset);
+  CPU_SET(cpu_id, &cpuset);
+
+  auto const err = sched_setaffinity(0, sizeof(cpuset), &cpuset);
+
+  if (err == -1)
+  {
+    // TODO:: Handle error
+  }
+}
 
 /***/
 inline tm* gmtime_rs(time_t const* timer, tm* buf) noexcept

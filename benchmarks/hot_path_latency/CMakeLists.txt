@@ -1,0 +1,2 @@
+add_executable(BENCHMARK_hot_path_system_clock hot_path_bench_config.h hot_path_bench.h hot_path_system_clock_bench.cpp)
+target_link_libraries(BENCHMARK_hot_path_system_clock bitlog)

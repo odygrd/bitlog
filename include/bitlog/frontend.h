@@ -531,6 +531,18 @@ public:
    */
   [[nodiscard]] frontend_options_t const& options() const noexcept { return _options; }
 
+  void preallocate() noexcept
+  {
+    // Get the queue associated with this thread
+    detail::ThreadLocalQueue<frontend_options_t>& tl_queue =
+      detail::get_thread_local_queue<frontend_options_t>(_run_dir, _options);
+
+    if (tl_queue.queue())
+    {
+      [[maybe_unused]] uint32_t const volatile x = tl_queue.queue()->capacity();
+    }
+  }
+
   /**
    * @brief Retrieves or creates a file sink with the specified name.
    *
@@ -741,6 +753,13 @@ public:
   {
     return _frontend_manager.options();
   }
+
+  /**
+   * Pre-allocates the thread-local data needed for the current thread.
+   * Although optional, it is recommended to invoke this function during the thread initialisation
+   * phase before the first log message.
+   */
+  void preallocate() noexcept { _frontend_manager.preallocate(); }
 
   /**
    * @brief Retrieves or creates a file sink with the specified name.

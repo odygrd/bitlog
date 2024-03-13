@@ -27,3 +27,5 @@ target_link_libraries(hello2 bitlog)
 
 enable_testing()
 add_subdirectory(test)
+
+add_subdirectory(benchmarks)

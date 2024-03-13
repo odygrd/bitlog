@@ -21,8 +21,8 @@ TEST_CASE("log_to_file_simple")
   auto backend_thread = std::jthread(
     [](std::stop_token const& st)
     {
-      using backend_options_t = bitlog::BackendOptions<bitlog::QueueTypeOption::Default>;
-      using backend_t = bitlog::Backend<backend_options_t>;
+      using backend_options_t = BackendOptions<bitlog::QueueTypeOption::Default>;
+      using backend_t = Backend<backend_options_t>;
 
       backend_t be{};
 
@@ -47,8 +47,8 @@ TEST_CASE("log_to_file_simple")
       frontend_options_t frontend_options{};
       frontend_manager_t fm{test_name, frontend_options};
 
-      bitlog::SinkOptions sink_options;
-      sink_options.output_file_suffix(bitlog::FileSuffix::None);
+      SinkOptions sink_options;
+      sink_options.output_file_suffix(FileSuffix::None);
       auto fsink = fm.create_file_sink(output_file.string(), sink_options);
 
       LoggerOptions lo{};
@@ -88,8 +88,8 @@ TEST_CASE("log_to_file_reallocate_queue")
   auto backend_thread = std::jthread(
     [](std::stop_token const& st)
     {
-      using backend_options_t = bitlog::BackendOptions<bitlog::QueueTypeOption::Default>;
-      using backend_t = bitlog::Backend<backend_options_t>;
+      using backend_options_t = BackendOptions<QueueTypeOption::Default>;
+      using backend_t = Backend<backend_options_t>;
 
       backend_t be{};
 
@@ -115,8 +115,8 @@ TEST_CASE("log_to_file_reallocate_queue")
       frontend_options.queue_capacity_bytes = 4096;
       frontend_manager_t fm{test_name, frontend_options};
 
-      bitlog::SinkOptions sink_options;
-      sink_options.output_file_suffix(bitlog::FileSuffix::None);
+      SinkOptions sink_options;
+      sink_options.output_file_suffix(FileSuffix::None);
       auto fsink = fm.create_file_sink(output_file.string(), sink_options);
 
       LoggerOptions lo{};
